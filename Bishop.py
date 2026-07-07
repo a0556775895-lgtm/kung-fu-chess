@@ -12,3 +12,26 @@ class Bishop(Piece):
         col_distance = abs(destination_col - source_col)
 
         return row_distance == col_distance and row_distance > 0
+    
+
+    def get_path_cells(
+    self,
+    source_row,
+    source_col,
+    destination_row,
+    destination_col,
+    ):
+        path = []
+
+        row_step = 1 if destination_row > source_row else -1
+        col_step = 1 if destination_col > source_col else -1
+
+        row = source_row + row_step
+        col = source_col + col_step
+
+        while row != destination_row:
+            path.append((row, col))
+            row += row_step
+            col += col_step
+
+        return path

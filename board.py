@@ -92,6 +92,15 @@ class Board:
         ):
             self._selected_position = (row, col)
             return
+        if not self._is_path_clear(
+            selected_piece,
+            selected_row,
+            selected_col,
+            row,
+            col,
+        ):
+            self._selected_position = None
+            return
 
         # Ignore illegal moves.
         if not selected_piece.is_valid_move(
@@ -124,3 +133,25 @@ class Board:
         self._pending_source = None
         self._pending_destination = None
         self._pending_finish_time = None
+
+
+    def _is_path_clear(
+        self,
+        piece,
+        source_row,
+        source_col,
+        destination_row,
+        destination_col,
+        ):
+            path = piece.get_path_cells(
+                source_row,
+                source_col,
+                destination_row,
+                destination_col,
+            )
+
+            for row, col in path:
+                if self._grid[row][col] is not None:
+                    return False
+
+            return True

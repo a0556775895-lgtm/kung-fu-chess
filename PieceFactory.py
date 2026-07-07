@@ -3,7 +3,7 @@ from Queen import Queen
 from Rook import Rook
 from Bishop import Bishop
 from Knight import Knight
-
+from Pawn import Pawn
 
 class PieceFactory:
 
@@ -11,7 +11,9 @@ class PieceFactory:
     def create_piece(token):
         color = token[0]
         piece_type = token[1]
-
+        if piece_type == "P":
+            return Pawn(color)
+        
         if piece_type == "K":
             return King(color)
 
