@@ -52,6 +52,11 @@ def main():
         elif command == "print board":
             board.print_board()
 
+        elif parts[0] == "jump":
+            x = int(parts[1])
+            y = int(parts[2])
+            board.jump(x, y)
+
 
 if __name__ == "__main__":
     main()

@@ -8,6 +8,8 @@ class Piece(ABC):
         self._symbol = symbol
         self._move_time = move_time
         self._board = None
+        self._is_airborne = False
+        self._jump_finish_time = None
 
     @property
     def color(self):
@@ -49,3 +51,20 @@ class Piece(ABC):
 
     def get_board(self):
         return self._board
+    
+    def start_jump(self, current_time):
+        self._is_airborne = True
+        self._jump_finish_time = current_time + 1000
+
+    def finish_jump(self):
+        self._is_airborne = False
+        self._jump_finish_time = None
+
+    def is_airborne(self):
+        return self._is_airborne
+    
+    def should_finish_jump(self, current_time):
+        return (
+            self._is_airborne
+            and current_time >= self._jump_finish_time
+        )

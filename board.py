@@ -8,6 +8,9 @@ class Board:
         self._rows = 0
         self._cols = 0
 
+        self._pending_arrival_time = None
+        self._pending_move_executed = False
+
         self._selected_position = None
 
         self._current_time = 0
@@ -65,11 +68,28 @@ class Board:
     def wait(self, milliseconds):
         self._current_time += milliseconds
 
+        # Arrival
+        if (
+            self._pending_arrival_time is not None
+            and not self._pending_move_executed
+            and self._current_time >= self._pending_arrival_time
+        ):
+            self._execute_arrival()
+
+        # Finish
         if (
             self._pending_finish_time is not None
             and self._current_time >= self._pending_finish_time
         ):
-            self._execute_pending_move()
+            self._finish_pending_move()
+
+        for row in self._grid:
+            for piece in row:
+                if (
+                    piece is not None
+                    and piece.should_finish_jump(self._current_time)
+                ):
+                    piece.finish_jump()
 
     def print_board(self):
         for row in self._grid:
@@ -138,6 +158,12 @@ class Board:
 
         move_time = selected_piece.get_move_time() * steps
 
+        self._pending_arrival_time = (
+            self._current_time +
+            selected_piece.get_move_time()
+        )
+
+        self._pending_move_executed = False
         self._pending_finish_time = (
             self._current_time + move_time
         )
@@ -150,6 +176,19 @@ class Board:
 
         piece = self._grid[source_row][source_col]
         captured_piece = self._grid[dest_row][dest_col]
+
+        if (
+            captured_piece is not None
+            and captured_piece.color != piece.color
+            and captured_piece.is_airborne()
+        ):
+            self._grid[source_row][source_col] = None
+
+            self._pending_source = None
+            self._pending_destination = None
+            self._pending_finish_time = None
+
+            return
 
         self._grid[source_row][source_col] = None
         self._grid[dest_row][dest_col] = piece
@@ -176,7 +215,54 @@ class Board:
         self._pending_destination = None
         self._pending_finish_time = None
 
+    def _execute_arrival(self):
+        source_row, source_col = self._pending_source
+        dest_row, dest_col = self._pending_destination
 
+        piece = self._grid[source_row][source_col]
+        captured_piece = self._grid[dest_row][dest_col]
+
+        if (
+            captured_piece is not None
+            and captured_piece.color != piece.color
+            and captured_piece.is_airborne()
+        ):
+            self._grid[source_row][source_col] = None
+            self._pending_move_executed = True
+            return
+
+        self._grid[source_row][source_col] = None
+        self._grid[dest_row][dest_col] = piece
+
+        if (
+            piece.symbol == "P"
+            and (
+                (piece.color == "w" and dest_row == 0)
+                or
+                (piece.color == "b" and dest_row == self._rows - 1)
+            )
+        ):
+            self._grid[dest_row][dest_col] = PieceFactory.create_piece(
+                f"{piece.color}Q"
+            )
+
+        if (
+            captured_piece is not None
+            and captured_piece.symbol == "K"
+        ):
+            self._game_over = True
+
+        self._pending_move_executed = True
+
+    def _finish_pending_move(self):
+        self._pending_source = None
+        self._pending_destination = None
+
+        self._pending_arrival_time = None
+        self._pending_finish_time = None
+
+        self._pending_move_executed = False
+        
     def _is_path_clear(
         self,
         piece,
@@ -200,3 +286,26 @@ class Board:
     
     def get_rows(self):
         return self._rows
+    
+
+    def jump(self, x, y):
+        if self._game_over:
+            return
+
+        row, col = self._pixel_to_cell(x, y)
+
+        if not self._is_inside_board(row, col):
+            return
+
+        piece = self._grid[row][col]
+
+        if piece is None:
+            return
+
+        if self._pending_source == (row, col):
+            return
+
+        if piece.is_airborne():
+            return
+
+        piece.start_jump(self._current_time)
