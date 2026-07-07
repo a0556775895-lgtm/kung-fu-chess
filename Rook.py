@@ -1,13 +1,13 @@
-from Piece import Piece
+from piece import Piece
 
 
 class Rook(Piece):
     """Represents a rook chess piece."""
 
     def __init__(self, color):
-        super().__init__(color, "R", 2000)
+        super().__init__(color, "R", 1000)
 
-    def is_valid_move(self, source_row, source_col, destination_row, destination_col):
+    def is_valid_move(self, source_row, source_col, destination_row, destination_col,     destination_piece,):
         row_distance = abs(destination_row - source_row)
         col_distance = abs(destination_col - source_col)
 
@@ -22,7 +22,6 @@ class Rook(Piece):
     source_col,
     destination_row,
     destination_col,
-    destination_piece,
     ):
         path = []
 

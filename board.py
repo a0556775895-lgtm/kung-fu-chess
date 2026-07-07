@@ -43,6 +43,8 @@ class Board:
         self._cols = first_row_width
 
     def click(self, x, y):
+        if self._pending_finish_time is not None:
+            return
         row, col = self._pixel_to_cell(x, y)
 
         if not self._is_inside_board(row, col):
@@ -118,8 +120,19 @@ class Board:
         self._pending_source = self._selected_position
         self._pending_destination = (row, col)
 
+        path = selected_piece.get_path_cells(
+            selected_row,
+            selected_col,
+            row,
+            col,
+        )
+
+        steps = len(path) + 1
+
+        move_time = selected_piece.get_move_time() * steps
+
         self._pending_finish_time = (
-            self._current_time + selected_piece.get_move_time()
+            self._current_time + move_time
         )
 
         self._selected_position = None
