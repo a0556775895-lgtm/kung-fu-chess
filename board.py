@@ -1,3 +1,5 @@
+from PieceFactory import PieceFactory
+
 class Board:
     CELL_SIZE = 100
 
@@ -27,11 +29,15 @@ class Board:
             elif len(tokens) != first_row_width:
                 raise ValueError("ROW_WIDTH_MISMATCH")
 
-            for token in tokens:
-                if token != "." and not (len(token) == 2 and token[0] in "wb"):
-                    raise ValueError("UNKNOWN_TOKEN")
+            current_row = []
 
-            self._grid.append(tokens)
+            for token in tokens:
+                if token == ".":
+                    current_row.append(None)
+                else:
+                    current_row.append(PieceFactory.create_piece(token))
+
+            self._grid.append(current_row)
 
         self._rows = len(self._grid)
         self._cols = first_row_width
@@ -58,7 +64,7 @@ class Board:
 
     def print_board(self):
         for row in self._grid:
-            print(" ".join(row))
+            print(" ".join(str(piece) if piece else "." for piece in row))
 
     def _pixel_to_cell(self, x, y):
         return y // self.CELL_SIZE, x // self.CELL_SIZE
@@ -70,7 +76,7 @@ class Board:
         )
 
     def _handle_click_without_selection(self, row, col):
-        if self._grid[row][col] != ".":
+        if self._grid[row][col] is not None:
             self._selected_position = (row, col)
 
     def _handle_click_with_selection(self, row, col):
@@ -79,15 +85,30 @@ class Board:
         selected_row, selected_col = self._selected_position
         selected_piece = self._grid[selected_row][selected_col]
 
-        if clicked != "." and clicked[0] == selected_piece[0]:
+        # Clicking another friendly piece replaces the selection.
+        if (
+            clicked is not None
+            and clicked.color == selected_piece.color
+        ):
             self._selected_position = (row, col)
+            return
+
+        # Ignore illegal moves.
+        if not selected_piece.is_valid_move(
+            selected_row,
+            selected_col,
+            row,
+            col,
+        ):
+            self._selected_position = None
             return
 
         self._pending_source = self._selected_position
         self._pending_destination = (row, col)
 
-        # באיטרציה הנוכחית נניח שמשך המהלך הוא שנייה אחת.
-        self._pending_finish_time = self._current_time + 1000
+        self._pending_finish_time = (
+            self._current_time + selected_piece.get_move_time()
+        )
 
         self._selected_position = None
 
@@ -97,7 +118,7 @@ class Board:
 
         piece = self._grid[source_row][source_col]
 
-        self._grid[source_row][source_col] = "."
+        self._grid[source_row][source_col] = None
         self._grid[dest_row][dest_col] = piece
 
         self._pending_source = None
