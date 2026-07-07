@@ -39,9 +39,24 @@ class Pawn(Piece):
         destination_col,
     ):
         direction = -1 if self.color == "w" else 1
+        board = self.get_board()
+        rows = board.get_rows()
 
-        return (
+        if self.color == "w":
+            start_row = rows - 1
+        else:
+            start_row = 0
+        # One-cell move.
+        if (
             destination_row == source_row + direction
+            and destination_col == source_col
+        ):
+            return True
+
+        # Two-cell move from the starting row.
+        return (
+            source_row == start_row
+            and destination_row == source_row + (2 * direction)
             and destination_col == source_col
         )
 
@@ -60,3 +75,19 @@ class Pawn(Piece):
             and destination_row == source_row + direction
             and abs(destination_col - source_col) == 1
         )
+    
+    def get_path_cells(
+        self,
+        source_row,
+        source_col,
+        destination_row,
+        destination_col,
+    ):
+        if abs(destination_row - source_row) == 2:
+            direction = -1 if self.color == "w" else 1
+
+            return [
+                (source_row + direction, source_col)
+            ]
+
+        return []

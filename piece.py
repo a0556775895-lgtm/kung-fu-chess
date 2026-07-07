@@ -7,6 +7,7 @@ class Piece(ABC):
         self._color = color
         self._symbol = symbol
         self._move_time = move_time
+        self._board = None
 
     @property
     def color(self):
@@ -42,3 +43,9 @@ class Piece(ABC):
     @property
     def symbol(self):
         return self._symbol
+    
+    def set_board(self, board):
+        self._board = board
+
+    def get_board(self):
+        return self._board

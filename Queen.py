@@ -5,7 +5,7 @@ class Queen(Piece):
     """Represents a queen chess piece."""
 
     def __init__(self, color):
-        super().__init__(color, "Q", 2000)
+        super().__init__(color, "Q", 1000)
 
     def is_valid_move(self, source_row, source_col, destination_row, destination_col, destination_piece,):
         row_distance = abs(destination_row - source_row)

@@ -37,7 +37,9 @@ class Board:
                 if token == ".":
                     current_row.append(None)
                 else:
-                    current_row.append(PieceFactory.create_piece(token))
+                    piece = PieceFactory.create_piece(token)
+                    piece.set_board(self)
+                    current_row.append(piece)
 
             self._grid.append(current_row)
 
@@ -153,6 +155,18 @@ class Board:
         self._grid[dest_row][dest_col] = piece
 
         if (
+            piece.symbol == "P"
+            and (
+                (piece.color == "w" and dest_row == 0)
+                or
+                (piece.color == "b" and dest_row == self._rows - 1)
+            )
+        ):
+            self._grid[dest_row][dest_col] = PieceFactory.create_piece(
+                f"{piece.color}Q"
+            )
+
+        if (
             captured_piece is not None
             and captured_piece.symbol == "K"
         ):
@@ -183,3 +197,6 @@ class Board:
                     return False
 
             return True
+    
+    def get_rows(self):
+        return self._rows

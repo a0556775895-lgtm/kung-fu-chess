@@ -5,7 +5,7 @@ class Bishop(Piece):
     """Represents a bishop chess piece."""
 
     def __init__(self, color):
-        super().__init__(color, "B", 2000)
+        super().__init__(color, "B", 1000)
 
     def is_valid_move(self, source_row, source_col, destination_row, destination_col):
         row_distance = abs(destination_row - source_row)
