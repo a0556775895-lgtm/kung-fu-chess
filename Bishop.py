@@ -20,6 +20,7 @@ class Bishop(Piece):
     source_col,
     destination_row,
     destination_col,
+    destination_piece
     ):
         path = []
 

@@ -34,5 +34,7 @@ class Piece(ABC):
         source_col,
         destination_row,
         destination_col,
+        destination_piece,
     ):
+        """Returns True if the move is legal for this piece."""
         pass

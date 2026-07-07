@@ -92,18 +92,21 @@ class Board:
         ):
             self._selected_position = (row, col)
             return
-        if not self._is_path_clear(
-            selected_piece,
+
+        # Ignore illegal moves.
+        if not selected_piece.is_valid_move(
             selected_row,
             selected_col,
             row,
             col,
+            clicked,
         ):
             self._selected_position = None
             return
 
-        # Ignore illegal moves.
-        if not selected_piece.is_valid_move(
+        # Ignore moves blocked by another piece.
+        if not self._is_path_clear(
+            selected_piece,
             selected_row,
             selected_col,
             row,
