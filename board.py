@@ -1,20 +1,25 @@
 class Board:
-    def __init__(self, board_lines: list[str]):
+    CELL_SIZE = 100
+
+    def __init__(self, board_lines):
         self._grid = []
         self._rows = 0
         self._cols = 0
 
-        self._parse(board_lines)
+        self._selected_position = None
 
-    def _parse(self, board_lines: list[str]):
+        self._current_time = 0
+
+        self._pending_source = None
+        self._pending_destination = None
+        self._pending_finish_time = None
+
+        self._parse_board(board_lines)
+
+    def _parse_board(self, board_lines):
         first_row_width = None
 
         for row in board_lines:
-            row = row.strip()
-
-            if not row:
-                continue
-
             tokens = row.split()
 
             if first_row_width is None:
@@ -22,24 +27,79 @@ class Board:
             elif len(tokens) != first_row_width:
                 raise ValueError("ROW_WIDTH_MISMATCH")
 
-            self._validate_tokens(tokens)
+            for token in tokens:
+                if token != "." and not (len(token) == 2 and token[0] in "wb"):
+                    raise ValueError("UNKNOWN_TOKEN")
 
             self._grid.append(tokens)
 
         self._rows = len(self._grid)
-        self._cols = first_row_width if first_row_width is not None else 0
+        self._cols = first_row_width
 
-    def _validate_tokens(self, tokens: list[str]):
-        for token in tokens:
-            if token == ".":
-                continue
+    def click(self, x, y):
+        row, col = self._pixel_to_cell(x, y)
 
-            if len(token) != 2:
-                raise ValueError("UNKNOWN_TOKEN")
+        if not self._is_inside_board(row, col):
+            return
 
-            if token[0] not in ("w", "b"):
-                raise ValueError("UNKNOWN_TOKEN")
+        if self._selected_position is None:
+            self._handle_click_without_selection(row, col)
+        else:
+            self._handle_click_with_selection(row, col)
+
+    def wait(self, milliseconds):
+        self._current_time += milliseconds
+
+        if (
+            self._pending_finish_time is not None
+            and self._current_time >= self._pending_finish_time
+        ):
+            self._execute_pending_move()
 
     def print_board(self):
         for row in self._grid:
             print(" ".join(row))
+
+    def _pixel_to_cell(self, x, y):
+        return y // self.CELL_SIZE, x // self.CELL_SIZE
+
+    def _is_inside_board(self, row, col):
+        return (
+            0 <= row < self._rows and
+            0 <= col < self._cols
+        )
+
+    def _handle_click_without_selection(self, row, col):
+        if self._grid[row][col] != ".":
+            self._selected_position = (row, col)
+
+    def _handle_click_with_selection(self, row, col):
+        clicked = self._grid[row][col]
+
+        selected_row, selected_col = self._selected_position
+        selected_piece = self._grid[selected_row][selected_col]
+
+        if clicked != "." and clicked[0] == selected_piece[0]:
+            self._selected_position = (row, col)
+            return
+
+        self._pending_source = self._selected_position
+        self._pending_destination = (row, col)
+
+        # באיטרציה הנוכחית נניח שמשך המהלך הוא שנייה אחת.
+        self._pending_finish_time = self._current_time + 1000
+
+        self._selected_position = None
+
+    def _execute_pending_move(self):
+        source_row, source_col = self._pending_source
+        dest_row, dest_col = self._pending_destination
+
+        piece = self._grid[source_row][source_col]
+
+        self._grid[source_row][source_col] = "."
+        self._grid[dest_row][dest_col] = piece
+
+        self._pending_source = None
+        self._pending_destination = None
+        self._pending_finish_time = None
