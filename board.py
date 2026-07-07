@@ -18,6 +18,8 @@ class Board:
 
         self._parse_board(board_lines)
 
+        self._game_over = False
+
     def _parse_board(self, board_lines):
         first_row_width = None
 
@@ -43,6 +45,9 @@ class Board:
         self._cols = first_row_width
 
     def click(self, x, y):
+        if self._game_over:
+            return
+        
         if self._pending_finish_time is not None:
             return
         row, col = self._pixel_to_cell(x, y)
@@ -142,9 +147,16 @@ class Board:
         dest_row, dest_col = self._pending_destination
 
         piece = self._grid[source_row][source_col]
+        captured_piece = self._grid[dest_row][dest_col]
 
         self._grid[source_row][source_col] = None
         self._grid[dest_row][dest_col] = piece
+
+        if (
+            captured_piece is not None
+            and captured_piece.symbol == "K"
+        ):
+            self._game_over = True
 
         self._pending_source = None
         self._pending_destination = None

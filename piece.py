@@ -38,3 +38,7 @@ class Piece(ABC):
     ):
         """Returns True if the move is legal for this piece."""
         pass
+
+    @property
+    def symbol(self):
+        return self._symbol
