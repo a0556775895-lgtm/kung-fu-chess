@@ -129,13 +129,6 @@ class Board:
     def _is_inside_board(self, row, col):
         return self._geometry.is_inside_board(row, col)
 
-    def _handle_click_without_selection(self, row, col):
-        if self._grid[row][col] is not None:
-            self._selection_controller.selected_position = (row, col)
-
-    def _handle_click_with_selection(self, row, col):
-        self._selection_controller.handle_click(row, col)
-
     def _execute_arrival(self):
         source_row, source_col = self._pending_source
         dest_row, dest_col = self._pending_destination
@@ -201,6 +194,22 @@ class Board:
     
     def get_rows(self):
         return self._rows
+
+    def get_piece_at(self, row, col):
+        """Return the piece at (row, col), or None if empty."""
+        return self._grid[row][col]
+
+    def is_path_clear(self, piece, source_row, source_col, destination_row, destination_col):
+        """Return True if no piece blocks the path for this move."""
+        return self._is_path_clear(piece, source_row, source_col, destination_row, destination_col)
+
+    @property
+    def current_time(self):
+        return self._current_time
+
+    def schedule_move(self, source, destination, arrival_time, finish_time):
+        """Register a pending move to be executed over time."""
+        self._pending_move.set_move(source, destination, arrival_time, finish_time)
     
 
     def jump(self, x, y):
