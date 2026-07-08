@@ -1,5 +1,8 @@
 from piece_factory import PieceFactory
 from piece import PieceColor
+from board_geometry import BoardGeometry
+from pending_move import PendingMove
+from selection_controller import SelectionController
 
 class Board:
     CELL_SIZE = 100
@@ -12,21 +15,55 @@ class Board:
         self._grid = []
         self._rows = 0
         self._cols = 0
-
-        self._pending_arrival_time = None
-        self._pending_move_executed = False
-
-        self._selected_position = None
-
         self._current_time = 0
+        self._game_over = False
 
-        self._pending_source = None
-        self._pending_destination = None
-        self._pending_finish_time = None
+        self._pending_move = PendingMove()
+        self._geometry = BoardGeometry(0, 0, self.CELL_SIZE)
+        self._selection_controller = SelectionController(self)
 
         self._parse_board(board_lines)
+        self._geometry.update_dimensions(self._rows, self._cols)
 
-        self._game_over = False
+    @property
+    def _pending_source(self):
+        return self._pending_move.source
+
+    @_pending_source.setter
+    def _pending_source(self, value):
+        self._pending_move.source = value
+
+    @property
+    def _pending_destination(self):
+        return self._pending_move.destination
+
+    @_pending_destination.setter
+    def _pending_destination(self, value):
+        self._pending_move.destination = value
+
+    @property
+    def _pending_arrival_time(self):
+        return self._pending_move.arrival_time
+
+    @_pending_arrival_time.setter
+    def _pending_arrival_time(self, value):
+        self._pending_move.arrival_time = value
+
+    @property
+    def _pending_finish_time(self):
+        return self._pending_move.finish_time
+
+    @_pending_finish_time.setter
+    def _pending_finish_time(self, value):
+        self._pending_move.finish_time = value
+
+    @property
+    def _selected_position(self):
+        return self._selection_controller.selected_position
+
+    @_selected_position.setter
+    def _selected_position(self, value):
+        self._selection_controller.selected_position = value
 
     def _parse_board(self, board_lines):
         first_row_width = None
@@ -57,43 +94,29 @@ class Board:
     def click(self, x, y):
         if self._game_over:
             return
-        
-        if self._pending_finish_time is not None:
+
+        if self._pending_move.finish_time is not None:
             return
+
         row, col = self._pixel_to_cell(x, y)
 
         if not self._is_inside_board(row, col):
             return
 
-        if self._selected_position is None:
-            self._handle_click_without_selection(row, col)
-        else:
-            self._handle_click_with_selection(row, col)
+        self._selection_controller.handle_click(row, col)
 
     def wait(self, milliseconds):
         self._current_time += milliseconds
 
-        # Arrival
-        if (
-            self._pending_arrival_time is not None
-            and not self._pending_move_executed
-            and self._current_time >= self._pending_arrival_time
-        ):
+        if self._pending_move.is_arrival_pending(self._current_time):
             self._execute_arrival()
 
-        # Finish
-        if (
-            self._pending_finish_time is not None
-            and self._current_time >= self._pending_finish_time
-        ):
+        if self._pending_move.is_finish_pending(self._current_time):
             self._finish_pending_move()
 
         for row in self._grid:
             for piece in row:
-                if (
-                    piece is not None
-                    and piece.should_finish_jump(self._current_time)
-                ):
+                if piece is not None and piece.should_finish_jump(self._current_time):
                     piece.finish_jump()
 
     def print_board(self):
@@ -101,79 +124,17 @@ class Board:
             print(" ".join(str(piece) if piece else "." for piece in row))
 
     def _pixel_to_cell(self, x, y):
-        return y // self.CELL_SIZE, x // self.CELL_SIZE
+        return self._geometry.pixel_to_cell(x, y)
 
     def _is_inside_board(self, row, col):
-        return (
-            0 <= row < self._rows and
-            0 <= col < self._cols
-        )
+        return self._geometry.is_inside_board(row, col)
 
     def _handle_click_without_selection(self, row, col):
         if self._grid[row][col] is not None:
-            self._selected_position = (row, col)
+            self._selection_controller.selected_position = (row, col)
 
     def _handle_click_with_selection(self, row, col):
-        clicked = self._grid[row][col]
-
-        selected_row, selected_col = self._selected_position
-        selected_piece = self._grid[selected_row][selected_col]
-
-        # Clicking another friendly piece replaces the selection.
-        if (
-            clicked is not None
-            and clicked.color == selected_piece.color
-        ):
-            self._selected_position = (row, col)
-            return
-
-        # Ignore illegal moves.
-        if not selected_piece.is_valid_move(
-            selected_row,
-            selected_col,
-            row,
-            col,
-            clicked,
-        ):
-            self._selected_position = None
-            return
-
-        # Ignore moves blocked by another piece.
-        if not self._is_path_clear(
-            selected_piece,
-            selected_row,
-            selected_col,
-            row,
-            col,
-        ):
-            self._selected_position = None
-            return
-
-        self._pending_source = self._selected_position
-        self._pending_destination = (row, col)
-
-        path = selected_piece.get_path_cells(
-            selected_row,
-            selected_col,
-            row,
-            col,
-        )
-
-        steps = len(path) + 1
-
-        move_time = selected_piece.move_time * steps
-
-        self._pending_arrival_time = (
-            self._current_time +
-            selected_piece.move_time
-        )
-
-        self._pending_move_executed = False
-        self._pending_finish_time = (
-            self._current_time + move_time
-        )
-
-        self._selected_position = None
+        self._selection_controller.handle_click(row, col)
 
     def _execute_arrival(self):
         source_row, source_col = self._pending_source
@@ -188,7 +149,7 @@ class Board:
             and captured_piece.is_airborne()
         ):
             self._grid[source_row][source_col] = None
-            self._pending_move_executed = True
+            self._pending_move.mark_executed()
             return
 
         self._grid[source_row][source_col] = None
@@ -208,20 +169,14 @@ class Board:
 
         if (
             captured_piece is not None
-            and captured_piece.symbol == "K"
+            and captured_piece.is_royal()
         ):
             self._game_over = True
 
-        self._pending_move_executed = True
+        self._pending_move.mark_executed()
 
     def _finish_pending_move(self):
-        self._pending_source = None
-        self._pending_destination = None
-
-        self._pending_arrival_time = None
-        self._pending_finish_time = None
-
-        self._pending_move_executed = False
+        self._pending_move.clear()
 
     def _is_path_clear(
         self,
