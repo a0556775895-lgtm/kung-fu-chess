@@ -6,6 +6,7 @@ This file lists the primary classes, the instance variables they hold, and the m
   - Variables: `_grid`, `_rows`, `_cols`, `_current_time`, `_game_over`, `_pending_move`, `_geometry`, `_selection_controller`
   - Legacy test-facing properties (wrappers): `_pending_source`, `_pending_destination`, `_pending_arrival_time`, `_pending_finish_time`, `_selected_position`
   - Key methods: `click(x, y)`, `wait(milliseconds)`, `print_board()`, `jump(x, y)`, `get_rows()`, `_parse_board()`, `_execute_arrival()`, `_finish_pending_move()`, `_is_path_clear()`
+  - Public helper methods (added during refactor): `get_piece_at(row, col)`, `is_path_clear(piece, srow, scol, drow, dcol)`, `current_time` (property), `schedule_move(source, destination, arrival_time, finish_time)`
 
 - **Piece** ([piece.py](piece.py))
   - Variables: `_color`, `_symbol`, `_move_time`, `_jump_duration`, `_board`, `_state`, `_jump_finish_time`
@@ -29,7 +30,7 @@ This file lists the primary classes, the instance variables they hold, and the m
 - **SelectionController** ([selection_controller.py](selection_controller.py))
   - Variables: `_selected_position` (internal)
   - Accessors: `selected_position` (property getter/setter)
-  - Key methods: `handle_click(row, col)`, `_try_select_piece(row, col)`, `_handle_selected_click(row, col)` — `_handle_selected_click` sets up the `PendingMove` using the board reference.
+  - Key methods: `handle_click(row, col)`, `_try_select_piece(row, col)`, `_handle_selected_click(row, col)` — `_handle_selected_click` schedules the move on the `Board` using public APIs (`get_piece_at`, `is_path_clear`, `current_time`, `schedule_move`).
 
 ---
 

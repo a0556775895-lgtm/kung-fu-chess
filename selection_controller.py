@@ -20,13 +20,13 @@ class SelectionController:
             self._handle_selected_click(row, col)
 
     def _try_select_piece(self, row, col):
-        if self._board._grid[row][col] is not None:
+        if self._board.get_piece_at(row, col) is not None:
             self._selected_position = (row, col)
 
     def _handle_selected_click(self, row, col):
-        clicked_piece = self._board._grid[row][col]
+        clicked_piece = self._board.get_piece_at(row, col)
         source_row, source_col = self._selected_position
-        selected_piece = self._board._grid[source_row][source_col]
+        selected_piece = self._board.get_piece_at(source_row, source_col)
 
         if (
             clicked_piece is not None
@@ -45,7 +45,7 @@ class SelectionController:
             self._selected_position = None
             return
 
-        if not self._board._is_path_clear(
+        if not self._board.is_path_clear(
             selected_piece,
             source_row,
             source_col,
@@ -64,10 +64,10 @@ class SelectionController:
 
         steps = len(path) + 1
         move_time = selected_piece.move_time * steps
-        arrival_time = self._board._current_time + selected_piece.move_time
-        finish_time = self._board._current_time + move_time
+        arrival_time = self._board.current_time + selected_piece.move_time
+        finish_time = self._board.current_time + move_time
 
-        self._board._pending_move.set_move(
+        self._board.schedule_move(
             self._selected_position,
             (row, col),
             arrival_time,
