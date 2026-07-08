@@ -1,4 +1,4 @@
-from PieceFactory import PieceFactory
+from piece_factory import PieceFactory
 
 class Board:
     CELL_SIZE = 100

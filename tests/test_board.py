@@ -6,7 +6,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import pytest
 
 from board import Board
-from Pawn import Pawn
+from pawn import Pawn
+from queen import Queen
 
 
 def test_board_size():
@@ -354,7 +355,6 @@ def test_capture_king_ends_game():
     assert board._game_over
 
 
-from Queen import Queen
 
 def test_white_pawn_promotion():
     board = Board([

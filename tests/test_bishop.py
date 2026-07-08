@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from Bishop import Bishop
+from bishop import Bishop
 
 
 def test_constructor():

@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from Pawn import Pawn
+from pawn import Pawn
 
 
 class DummyBoard:

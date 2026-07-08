@@ -5,13 +5,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import pytest
 
-from PieceFactory import PieceFactory
-from Pawn import Pawn
+from piece_factory import PieceFactory
+from pawn import Pawn
 from king import King
-from Queen import Queen
-from Rook import Rook
-from Bishop import Bishop
-from Knight import Knight
+from queen import Queen
+from rook import Rook
+from bishop import Bishop
+from knight import Knight
 
 
 def test_create_white_pawn():
