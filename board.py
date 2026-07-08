@@ -170,51 +170,6 @@ class Board:
 
         self._selected_position = None
 
-    def _execute_pending_move(self):
-        source_row, source_col = self._pending_source
-        dest_row, dest_col = self._pending_destination
-
-        piece = self._grid[source_row][source_col]
-        captured_piece = self._grid[dest_row][dest_col]
-
-        if (
-            captured_piece is not None
-            and captured_piece.color != piece.color
-            and captured_piece.is_airborne()
-        ):
-            self._grid[source_row][source_col] = None
-
-            self._pending_source = None
-            self._pending_destination = None
-            self._pending_finish_time = None
-
-            return
-
-        self._grid[source_row][source_col] = None
-        self._grid[dest_row][dest_col] = piece
-
-        if (
-            piece.symbol == "P"
-            and (
-                (piece.color == "w" and dest_row == 0)
-                or
-                (piece.color == "b" and dest_row == self._rows - 1)
-            )
-        ):
-            self._grid[dest_row][dest_col] = PieceFactory.create_piece(
-                f"{piece.color}Q"
-            )
-
-        if (
-            captured_piece is not None
-            and captured_piece.symbol == "K"
-        ):
-            self._game_over = True
-
-        self._pending_source = None
-        self._pending_destination = None
-        self._pending_finish_time = None
-
     def _execute_arrival(self):
         source_row, source_col = self._pending_source
         dest_row, dest_col = self._pending_destination
@@ -262,7 +217,7 @@ class Board:
         self._pending_finish_time = None
 
         self._pending_move_executed = False
-        
+
     def _is_path_clear(
         self,
         piece,

@@ -40,7 +40,7 @@ class Piece(ABC):
         destination_piece,
     ):
         """Returns True if the move is legal for this piece."""
-        pass
+        pass  # pragma: no cover
 
     @property
     def symbol(self):

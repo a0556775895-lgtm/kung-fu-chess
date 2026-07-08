@@ -1,3 +1,5 @@
+# Git repository: https://github.com/a0556775895-lgtm/kung-fu-chess
+
 import sys
 from board import Board
 
