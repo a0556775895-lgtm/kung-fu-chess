@@ -4,6 +4,10 @@ class Board:
     CELL_SIZE = 100
 
     def __init__(self, board_lines):
+        """Create a Board from text lines.
+
+        `board_lines` is a list of strings where each token is space-separated.
+        """
         self._grid = []
         self._rows = 0
         self._cols = 0

@@ -2,12 +2,18 @@ from piece import Piece
 
 
 class Rook(Piece):
-    """Represents a rook chess piece."""
+    """Represents a rook chess piece.
+
+    Rook moves along ranks or files; `get_path_cells` returns intermediate
+    cells between source and destination.
+    """
 
     def __init__(self, color):
         super().__init__(color, "R", 1000)
 
     def is_valid_move(self, source_row, source_col, destination_row, destination_col,     destination_piece,):
+        """Return True if the rook move is strictly horizontal or vertical."""
+
         row_distance = abs(destination_row - source_row)
         col_distance = abs(destination_col - source_col)
 

@@ -2,7 +2,11 @@ from piece import Piece
 
 
 class Pawn(Piece):
-    """Represents a pawn chess piece."""
+    """Represents a pawn chess piece.
+
+    Movement and capture logic lives in `is_valid_move`. `get_path_cells`
+    returns intermediate cells for two-square initial moves.
+    """
 
     def __init__(self, color):
         super().__init__(color, "P", 1000)
@@ -15,6 +19,11 @@ class Pawn(Piece):
         destination_col,
         destination_piece,
     ):
+        """Return True if the pawn move from source to destination is legal.
+
+        Handles forward moves and captures based on `destination_piece`.
+        """
+
         if destination_piece is None:
             return self._is_valid_forward_move(
                 source_row,
@@ -83,6 +92,11 @@ class Pawn(Piece):
         destination_row,
         destination_col,
     ):
+        """Return intermediate cells for a two-square pawn move.
+
+        Returns a list with the cell the pawn passes through when moving
+        two squares forward from its starting row; otherwise empty list.
+        """
         if abs(destination_row - source_row) == 2:
             direction = -1 if self.color == "w" else 1
 

@@ -5,6 +5,11 @@ from board import Board
 
 
 def main():
+    """Entry point: parse input and run commands on a `Board`.
+
+    Input should contain a `Board:` section and optional `Commands:` section.
+    """
+
     input_data = sys.stdin.read()
 
     if "Board:" not in input_data:

@@ -1,4 +1,14 @@
 from abc import ABC, abstractmethod
+from enum import Enum, auto
+
+
+class PieceState(Enum):
+    IDLE = auto()
+    MOVING = auto()
+    COOLDOWN = auto()
+    JUMPING = auto()
+    CAPTURED = auto()
+
 
 class Piece(ABC):
     """Base class for all chess pieces."""
@@ -8,7 +18,7 @@ class Piece(ABC):
         self._symbol = symbol
         self._move_time = move_time
         self._board = None
-        self._is_airborne = False
+        self._state = PieceState.IDLE
         self._jump_finish_time = None
 
     @property
@@ -25,6 +35,12 @@ class Piece(ABC):
         destination_row,
         destination_col,
     ):
+        """Return intermediate cells between source and destination.
+
+        Returns a list of (row, col) tuples representing intermediate
+        cells between source and destination. Default: empty list.
+        """
+
         return []
 
     def __str__(self):
@@ -50,21 +66,43 @@ class Piece(ABC):
         self._board = board
 
     def get_board(self):
+        """Return the `Board` instance this piece belongs to."""
+
         return self._board
     
+    @property
+    def state(self):
+        return self._state
+
+    def set_state(self, new_state: PieceState):
+        """Set the piece state to a `PieceState` value."""
+
+        self._state = new_state
+
     def start_jump(self, current_time):
-        self._is_airborne = True
+        """Start a jump: set state to `JUMPING` and schedule finish time.
+
+        `current_time` is the current time in milliseconds.
+        """
+
+        self._state = PieceState.JUMPING
         self._jump_finish_time = current_time + 1000
 
     def finish_jump(self):
-        self._is_airborne = False
+        """Finish an ongoing jump and reset state/time."""
+
+        self._state = PieceState.IDLE
         self._jump_finish_time = None
 
     def is_airborne(self):
-        return self._is_airborne
+        """Return True if the piece is currently in JUMPING state."""
+
+        return self._state == PieceState.JUMPING
     
     def should_finish_jump(self, current_time):
+        """Return True when a jump should finish based on `current_time`."""
+
         return (
-            self._is_airborne
+            self._state == PieceState.JUMPING
             and current_time >= self._jump_finish_time
         )

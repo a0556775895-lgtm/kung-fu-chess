@@ -9,6 +9,12 @@ class PieceFactory:
 
     @staticmethod
     def create_piece(token):
+        """Create a `Piece` instance from a two-char token.
+
+        Token format: `<color><type>`, e.g. `wP` or `bQ`.
+        Raises `ValueError("UNKNOWN_TOKEN")` for unsupported types.
+        """
+
         color = token[0]
         piece_type = token[1]
         if piece_type == "P":
