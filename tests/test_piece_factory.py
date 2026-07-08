@@ -12,6 +12,7 @@ from queen import Queen
 from rook import Rook
 from bishop import Bishop
 from knight import Knight
+from piece import PieceColor
 
 
 def test_create_white_pawn():
@@ -45,7 +46,7 @@ def test_create_knight():
 def test_piece_color():
     piece = PieceFactory.create_piece("bQ")
 
-    assert piece.color == "b"
+    assert piece.color == PieceColor.BLACK
 
 
 def test_unknown_piece():

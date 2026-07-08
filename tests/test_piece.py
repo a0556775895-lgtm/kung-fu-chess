@@ -4,12 +4,12 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import pytest
 
-from piece import Piece
+from piece import Piece, PieceColor
 
 
 class DummyPiece(Piece):
     def __init__(self):
-        super().__init__("w", "X", 1500)
+        super().__init__(PieceColor.WHITE, "X", 1500)
 
     def is_valid_move(
         self,
@@ -30,9 +30,9 @@ class DummyBoard:
 def test_constructor():
     piece = DummyPiece()
 
-    assert piece.color == "w"
+    assert piece.color == PieceColor.WHITE
     assert piece.symbol == "X"
-    assert piece.get_move_time() == 1500
+    assert piece.move_time == 1500
     assert piece.get_board() is None
     assert piece.is_airborne() is False
 

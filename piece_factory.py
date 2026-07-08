@@ -4,6 +4,7 @@ from rook import Rook
 from bishop import Bishop
 from knight import Knight
 from pawn import Pawn
+from piece import PieceColor
 
 class PieceFactory:
 
@@ -15,7 +16,7 @@ class PieceFactory:
         Raises `ValueError("UNKNOWN_TOKEN")` for unsupported types.
         """
 
-        color = token[0]
+        color = PieceColor(token[0])
         piece_type = token[1]
         if piece_type == "P":
             return Pawn(color)

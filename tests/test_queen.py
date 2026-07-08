@@ -11,7 +11,7 @@ def test_constructor():
 
     assert queen.color == "b"
     assert queen.symbol == "Q"
-    assert queen.get_move_time() == 1000
+    assert queen.move_time == 1000
 
 
 def test_valid_horizontal_move():

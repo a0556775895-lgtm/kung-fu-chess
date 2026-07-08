@@ -2,6 +2,24 @@ from abc import ABC, abstractmethod
 from enum import Enum, auto
 
 
+class PieceColor(Enum):
+    WHITE = "w"
+    BLACK = "b"
+
+    def __str__(self):
+        return self.value
+
+    def __eq__(self, other):
+        if isinstance(other, PieceColor):
+            return self is other
+        if isinstance(other, str):
+            return self.value == other
+        return False
+
+    def __hash__(self):
+        return hash(self.value)
+
+
 class PieceState(Enum):
     IDLE = auto()
     MOVING = auto()
@@ -13,10 +31,14 @@ class PieceState(Enum):
 class Piece(ABC):
     """Base class for all chess pieces."""
 
-    def __init__(self, color: str, symbol: str, move_time: int):
+    def __init__(self, color, symbol: str, move_time: int, jump_duration: int = 1000):
+        if isinstance(color, str):
+            color = PieceColor(color)
+
         self._color = color
         self._symbol = symbol
         self._move_time = move_time
+        self._jump_duration = jump_duration
         self._board = None
         self._state = PieceState.IDLE
         self._jump_finish_time = None
@@ -25,7 +47,8 @@ class Piece(ABC):
     def color(self):
         return self._color
 
-    def get_move_time(self):
+    @property
+    def move_time(self):
         return self._move_time
 
     def get_path_cells(
@@ -74,7 +97,8 @@ class Piece(ABC):
     def state(self):
         return self._state
 
-    def set_state(self, new_state: PieceState):
+    @state.setter
+    def state(self, new_state: PieceState):
         """Set the piece state to a `PieceState` value."""
 
         self._state = new_state
@@ -86,7 +110,7 @@ class Piece(ABC):
         """
 
         self._state = PieceState.JUMPING
-        self._jump_finish_time = current_time + 1000
+        self._jump_finish_time = current_time + self._jump_duration
 
     def finish_jump(self):
         """Finish an ongoing jump and reset state/time."""
@@ -106,3 +130,7 @@ class Piece(ABC):
             self._state == PieceState.JUMPING
             and current_time >= self._jump_finish_time
         )
+    
+    def is_royal(self):
+        """Return True if capturing this piece ends the game. Default: False."""
+        return False

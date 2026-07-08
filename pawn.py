@@ -1,4 +1,4 @@
-from piece import Piece
+from piece import Piece, PieceColor
 
 
 class Pawn(Piece):
@@ -47,11 +47,11 @@ class Pawn(Piece):
         destination_row,
         destination_col,
     ):
-        direction = -1 if self.color == "w" else 1
+        direction = -1 if self.color == PieceColor.WHITE else 1
         board = self.get_board()
         rows = board.get_rows()
 
-        if self.color == "w":
+        if self.color == PieceColor.WHITE:
             start_row = rows - 1
         else:
             start_row = 0
@@ -77,7 +77,7 @@ class Pawn(Piece):
         destination_col,
         destination_piece,
     ):
-        direction = -1 if self.color == "w" else 1
+        direction = -1 if self.color == PieceColor.WHITE else 1
 
         return (
             destination_piece.color != self.color
@@ -98,7 +98,7 @@ class Pawn(Piece):
         two squares forward from its starting row; otherwise empty list.
         """
         if abs(destination_row - source_row) == 2:
-            direction = -1 if self.color == "w" else 1
+            direction = -1 if self.color == PieceColor.WHITE else 1
 
             return [
                 (source_row + direction, source_col)

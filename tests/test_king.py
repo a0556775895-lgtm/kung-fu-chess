@@ -11,7 +11,7 @@ def test_constructor():
 
     assert king.color == "w"
     assert king.symbol == "K"
-    assert king.get_move_time() == 1000
+    assert king.move_time == 1000
 
 
 def test_move_one_step_up():

@@ -11,7 +11,7 @@ def test_constructor():
 
     assert bishop.color == "w"
     assert bishop.symbol == "B"
-    assert bishop.get_move_time() == 1000
+    assert bishop.move_time == 1000
 
 
 def test_valid_main_diagonal():

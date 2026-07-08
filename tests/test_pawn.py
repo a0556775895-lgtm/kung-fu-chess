@@ -24,7 +24,7 @@ def test_constructor():
 
     assert pawn.color == "w"
     assert pawn.symbol == "P"
-    assert pawn.get_move_time() == 1000
+    assert pawn.move_time == 1000
 
 
 def test_white_one_step_forward():

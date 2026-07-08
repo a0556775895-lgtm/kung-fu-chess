@@ -11,7 +11,7 @@ def test_constructor():
 
     assert knight.color == "b"
     assert knight.symbol == "N"
-    assert knight.get_move_time() == 3000
+    assert knight.move_time == 3000
 
 
 def test_move_two_one():

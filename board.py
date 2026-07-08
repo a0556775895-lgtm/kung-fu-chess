@@ -1,4 +1,5 @@
 from piece_factory import PieceFactory
+from piece import PieceColor
 
 class Board:
     CELL_SIZE = 100
@@ -160,11 +161,11 @@ class Board:
 
         steps = len(path) + 1
 
-        move_time = selected_piece.get_move_time() * steps
+        move_time = selected_piece.move_time * steps
 
         self._pending_arrival_time = (
             self._current_time +
-            selected_piece.get_move_time()
+            selected_piece.move_time
         )
 
         self._pending_move_executed = False
@@ -196,13 +197,13 @@ class Board:
         if (
             piece.symbol == "P"
             and (
-                (piece.color == "w" and dest_row == 0)
+                (piece.color == PieceColor.WHITE and dest_row == 0)
                 or
-                (piece.color == "b" and dest_row == self._rows - 1)
+                (piece.color == PieceColor.BLACK and dest_row == self._rows - 1)
             )
         ):
             self._grid[dest_row][dest_col] = PieceFactory.create_piece(
-                f"{piece.color}Q"
+                f"{piece.color.value}Q"
             )
 
         if (

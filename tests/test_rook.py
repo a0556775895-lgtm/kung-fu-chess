@@ -11,7 +11,7 @@ def test_constructor():
 
     assert rook.color == "w"
     assert rook.symbol == "R"
-    assert rook.get_move_time() == 1000
+    assert rook.move_time == 1000
 
 
 def test_valid_horizontal_move():
