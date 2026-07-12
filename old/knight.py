@@ -1,4 +1,4 @@
-from piece import Piece
+from old.piece import Piece
 
 
 class Knight(Piece):

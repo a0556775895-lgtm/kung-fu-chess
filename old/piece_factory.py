@@ -1,10 +1,10 @@
-from king import King
-from queen import Queen
-from rook import Rook
-from bishop import Bishop
-from knight import Knight
-from pawn import Pawn
-from piece import PieceColor
+from old.king import King
+from old.queen import Queen
+from old.rook import Rook
+from old.bishop import Bishop
+from old.knight import Knight
+from old.pawn import Pawn
+from old.piece import PieceColor
 
 class PieceFactory:
 

@@ -1,4 +1,4 @@
-from piece import Piece, PieceColor
+from old.piece import Piece, PieceColor
 
 
 class Pawn(Piece):

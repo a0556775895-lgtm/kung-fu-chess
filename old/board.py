@@ -1,8 +1,8 @@
-from piece_factory import PieceFactory
-from piece import PieceColor
-from board_geometry import BoardGeometry
-from pending_move import PendingMove
-from selection_controller import SelectionController
+from old.piece_factory import PieceFactory
+from old.piece import PieceColor
+from old.board_geometry import BoardGeometry
+from old.pending_move import PendingMove
+from old.selection_controller import SelectionController
 
 class Board:
     CELL_SIZE = 100
