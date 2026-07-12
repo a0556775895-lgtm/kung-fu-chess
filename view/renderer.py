@@ -37,12 +37,12 @@ from rules.rule_engine import (
 # Keyed on the concrete exception classes from rule_engine.py, one entry
 # per subclass currently defined there.
 _MESSAGES = {
-    OutOfBoardError: "המהלך יוצא מגבולות הלוח",
-    EmptyCellError: "אין כלי בתא המקור",
-    FriendlyFireError: "התא המבוקש תפוס בכלי ידידותי",
-    PieceAlreadyMovingError: "הכלי כבר באמצע תנועה",
-    IllegalPatternError: "התנועה אינה חוקית עבור סוג הכלי",
-    PathBlockedError: "הנתיב לתא היעד חסום",
+    OutOfBoardError: "The move goes out of bounds",
+    EmptyCellError: "There is no piece at the source cell",
+    FriendlyFireError: "The target cell is occupied by a friendly piece",
+    PieceAlreadyMovingError: "The piece is already in motion",
+    IllegalPatternError: "The move is illegal for this piece type",
+    PathBlockedError: "The path to the target cell is blocked",
 }
 
 
@@ -55,7 +55,7 @@ def render_rule_violation(error: RuleViolation) -> str:
     this module when `rule_engine.py` grows a new exception degrades to a
     less specific message instead of crashing.
     """
-    return _MESSAGES.get(type(error), f"מהלך לא חוקי: {error}")
+    return _MESSAGES.get(type(error), f"Illegal move: {error}")
 
 
 def print_rule_violation(error: RuleViolation) -> None:

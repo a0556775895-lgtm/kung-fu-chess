@@ -79,7 +79,7 @@ class Controller:
         try:
             validate_move(self._board, source, position)
         except RuleViolation as error:
-            print_rule_violation(error)
+            # print_rule_violation(error)
             self._selected_position = None
             return
 
@@ -91,7 +91,7 @@ class Controller:
         steps = len(path) + 1
         move_time = piece_rules.get_move_time(piece.kind) * steps
 
-        arrival_time = self._board.current_time + piece_rules.get_move_time(piece.kind)
-        finish_time = self._board.current_time + move_time
-
+        arrival_time = self._board.current_time + move_time
+        finish_time = arrival_time
+        
         self._board.schedule_move(source, destination, arrival_time, finish_time)

@@ -94,6 +94,29 @@ class RealTimeArbiter:
             if motion.is_arrival_pending(current_time)
         ]
 
+        handled = set()
+
+        for i, motion1 in enumerate(arriving):
+            if motion1.piece.id in handled:
+                continue
+
+            for motion2 in arriving[i + 1:]:
+                if motion2.piece.id in handled:
+                    continue
+
+                if (
+                    motion1.source == motion2.destination
+                    and motion1.destination == motion2.source
+                    and motion1.piece.color != motion2.piece.color
+                ):
+                    # motion1 הגיע ראשון כי arriving שומר על סדר הרישום
+                    motion2.bounce(current_time)
+                    self._execute_arrival(motion1)
+
+                    handled.add(motion1.piece.id)
+                    handled.add(motion2.piece.id)
+                    break
+
         by_destination = {}
         for motion in arriving:
             by_destination.setdefault(motion.destination, []).append(motion)

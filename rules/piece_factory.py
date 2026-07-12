@@ -19,10 +19,14 @@ class PieceFactory:
         doesn't start with an unset position.
         """
 
+        if (
+            len(token) != 2
+            or token[0] not in ("w", "b")
+            or token[1] not in VALID_KINDS
+        ):
+            raise ValueError("UNKNOWN_TOKEN")
+
         color = PieceColor(token[0])
         kind = token[1]
-
-        if kind not in VALID_KINDS:
-            raise ValueError("UNKNOWN_TOKEN")
 
         return Piece(color, kind, cell=cell)

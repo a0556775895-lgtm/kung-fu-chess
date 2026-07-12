@@ -127,9 +127,9 @@ def _pawn_is_valid_forward_move(color, source, destination, board_rows):
     direction = -1 if color == PieceColor.WHITE else 1
 
     if color == PieceColor.WHITE:
-        start_row = board_rows - 1
+        start_row = board_rows - 2
     else:
-        start_row = 0
+        start_row = 1
 
     # One-cell move.
     if (
