@@ -1,3 +1,4 @@
+# יצירת כלי מטוקן טקסטואלי דו-תווי כמו wP או bK, כולל הקצאת id ייחודי.
 """Create Piece instances from two-char board-notation tokens."""
 
 from model.piece import Piece, PieceColor

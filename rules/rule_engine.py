@@ -1,3 +1,4 @@
+# אימות חוקיות מהלך מבוקש — קריאה בלבד מהלוח, מחזיר MoveValidation.
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
@@ -7,7 +8,7 @@ from rules import piece_rules
 
 
 class BoardView(Protocol):
-    """Read-only interface required by RuleEngine."""
+    """Read-only board interface required by RuleEngine."""
 
     @property
     def rows(self) -> int:
@@ -22,15 +23,11 @@ class BoardView(Protocol):
 
 @dataclass(frozen=True)
 class MoveValidation:
-    """Result of a legality check (Design Guide, section 8).
+    """Result of a legality check.
 
-    `reason` is always present: "ok" for a valid move, otherwise a
-    stable machine-readable string such as "outside_board",
-    "empty_source", "friendly_destination", or "illegal_piece_move".
-    A blocked sliding path is reported as "illegal_piece_move" too --
-    the Design Guide defines only these four failure reasons, and from
-    the caller's perspective "blocked" and "wrong pattern" both mean
-    "this piece cannot make this move right now".
+    reason is always set: 'ok' on success, or one of:
+    'outside_board', 'empty_source', 'friendly_destination', 'illegal_piece_move'.
+    A blocked sliding path is reported as 'illegal_piece_move'.
     """
 
     is_valid: bool
@@ -38,14 +35,11 @@ class MoveValidation:
 
 
 class RuleEngine:
-    """Validates moves according to the game rules.
+    """Validates a requested move against the game rules.
 
-    Read-only with respect to Board: inspects state and returns a
-    MoveValidation, but never moves pieces, removes captures, starts
-    motions, or updates game state. It also does not know about
-    game_over or about whether a piece already has an active Motion --
-    those are application-level guards owned by GameEngine and checked
-    *before* GameEngine calls here (Design Guide, section 9).
+    Read-only with respect to Board: never moves pieces or updates state.
+    Does not check game_over or whether a piece is already moving —
+    those guards are owned by GameEngine.
     """
 
     @staticmethod

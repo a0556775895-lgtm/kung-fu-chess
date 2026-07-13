@@ -1,11 +1,9 @@
-"""A single piece's move currently in flight.
+# ייצוג תנועה בודדת של כלי אחד בזמן ריצה.
+"""A single in-flight piece move.
 
-Per the Design Guide, section 10: arrival_time is proportional to the
-number of cells crossed (N cells = N x 1000ms), and the board updates
-exactly once, at arrival. There is no separate "finish" phase and no
-bounce/collision-path mechanism -- same-destination collisions between
-two concurrently-moving pieces are resolved by processing order in
-RealTimeArbiter, not by anything this class needs to know about.
+Holds the piece, source, destination, start time, and arrival time.
+The board is updated exactly once, at arrival. Collision resolution
+is handled by RealTimeArbiter, not here.
 """
 
 
@@ -18,4 +16,5 @@ class Motion:
         self.arrival_time = arrival_time
 
     def is_arrival_pending(self, current_time) -> bool:
+        """Return True if the piece has reached or passed its arrival time."""
         return current_time >= self.arrival_time

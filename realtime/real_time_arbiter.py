@@ -1,30 +1,20 @@
-"""Own and resolve every currently-active `Motion`.
+# ניהול כל התנועות הפעילות, קידום זמן מדומה, פתרון הגעות, התנגשויות וקפיצות.
+"""Owns and resolves every active Motion and airborne piece.
 
-Common route (Design Guide, section 10): one Motion per moving piece,
-timed at MS_PER_CELL per cell crossed, board updated only on arrival.
+Timing rules:
+- N cells crossed = N * 1000ms (all kinds except Knight).
+- Knight always takes 3000ms regardless of distance.
+- A jump lasts exactly 1000ms; the piece stays on its cell.
 
-Approved extension beyond the Design Guide: multiple pieces may move
-simultaneously (no global "one active motion" lock / no
-`motion_in_progress` rejection). `has_active_motion` therefore takes a
-`piece` argument and answers "is THIS piece already moving?" -- the
-per-piece guard GameEngine needs so it doesn't start a second Motion for
-a piece that's already mid-move. This differs from the literal
-Section-20 signature (`has_active_motion() -> bool`, no argument),
-which assumed the single-motion model.
+Collision rule: when two enemy motions arrive at each other's source
+in the same tick, the one scheduled first wins. The other piece is
+already CAPTURED, so its arrival is silently dropped.
 
-Collision rule confirmed by test cases (enemy_collision_white/black_
-started_first): when two Motions of opposite color would arrive at each
-other's source cell in the same tick, whichever was scheduled first
-wins -- it captures normally. The other motion's piece has, by then,
-already been marked CAPTURED, so its arrival is silently dropped: no
-second write to the board, no double free of a cell. This falls out of
-processing motions in scheduling order without any dedicated collision
-code. (Same-color near-miss "stop one cell early" behavior was
-described but is NOT implemented here -- explicitly out of scope for
-now per direction received.)
+Airborne capture: if a moving enemy arrives at the cell of an airborne
+piece, the arriving piece is captured and removed; the airborne piece
+stays in place.
 
-Promotion is intentionally not implemented (Design Guide, section 3:
-"Pawn has no promotion").
+Promotion: applied at arrival when a pawn reaches the back rank.
 """
 
 from __future__ import annotations

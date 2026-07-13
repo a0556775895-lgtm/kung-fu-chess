@@ -1,9 +1,10 @@
+# כללי תנועה לכל סוג כלי — תקינות, תאי ביניים, תזמון הגעה והכתרה.
 """Movement rules and per-kind metadata for every piece kind.
 
-This module replaces the old per-subclass files (pawn.py, queen.py, rook.py,
-bishop.py, knight.py, king.py). Instead of each kind being a `Piece`
-subclass with its own `is_valid_move`/`get_pathcells`, every kind is just
-a string ("P", "Q", "R", "B", "N", "K") and this module dispatches on it.
+Each public function is stateless: it receives board data and returns
+a result without mutating anything. RealTimeArbiter calls only
+get_arrival_duration() for timing and get_promotion_kind() for
+promotion — it never branches on piece kind itself.
 """
 
 from model.position import Position

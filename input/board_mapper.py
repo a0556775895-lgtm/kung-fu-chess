@@ -1,12 +1,5 @@
-"""Pixel <-> board-cell translation.
-
-Replaces `board_geometry.py` (`ARCHITECTURE_PLAN.md`, section 3: same
-role, new name/location). The one real change beyond relocation: this
-version speaks `Position` instead of raw `(row, col)` ints, matching the
-rest of the new layers (`model/position.py`, `rules/rule_engine.py`) —
-callers no longer have to build a `Position` themselves right after
-calling this.
-"""
+# תרגום פיקסלים לתא לוחי ובדיקת גבולות.
+"""Pixel-to-cell translation and bounds checking."""
 
 from model.position import Position
 

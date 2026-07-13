@@ -1,12 +1,5 @@
-"""Text-mode rendering of game state.
-
-Per Design Guide, section 12: the renderer receives GameSnapshot data
-only -- never the live Board or Piece objects. This module rebuilds a
-plain grid of piece tokens ("wP", "bK", ".", ...) from the snapshot's
-`pieces` (a list of PieceSnapshot, each with a logical `cell` Position,
-not pixels) and `board_width`/`board_height`, then hands that grid to
-BoardPrinter, which owns the actual line-formatting/printing logic.
-"""
+# רנדור טקסטואלי של מצב המשחק מתוך GameSnapshot.
+"""Text rendering from GameSnapshot — never from live Board or Piece objects."""
 
 from dataclasses import dataclass
 from typing import List, Optional

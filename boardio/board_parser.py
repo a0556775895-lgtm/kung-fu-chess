@@ -1,9 +1,5 @@
-"""Parse text board input into a grid of Piece/None.
-
-Extracted 1:1 from the old `Board._parse_board` — no logic change, only
-relocation. `Board` no longer owns parsing; it just calls `parse_board`
-and stores the result.
-"""
+# פרסור טקסט ללוח שחמט ויצירת אובייקט Board.
+"""Parse a text board definition into a Board instance."""
 
 from model.position import Position
 from rules.piece_factory import PieceFactory

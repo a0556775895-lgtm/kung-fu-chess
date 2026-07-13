@@ -1,13 +1,10 @@
+# מצב גלובלי של המשחק — רק דגל game_over.
 from dataclasses import dataclass
 
 
 @dataclass
 class GameState:
-    """Holds game-wide state shared across the engine.
-
-    Timing lives in RealTimeArbiter, not here. GameState only tracks
-    whether the game has ended.
-    """
+    """Tracks whether the game has ended. Timing lives in RealTimeArbiter."""
 
     game_over: bool = False
 

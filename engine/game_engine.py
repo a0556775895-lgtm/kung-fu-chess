@@ -1,25 +1,14 @@
-"""Top-level orchestrator: owns the final game-over decision.
+# תיאום שירותי עליון — מאשר מהלכים, מפעיל תנועות, מחליט על game_over.
+"""Top-level application service: the single public entry point for all
+game commands.
 
-Until this step, `RealTimeArbiter` both DETECTED a royal-piece capture
-and DECIDED the game was over, by calling `Board.end_game()` directly
-from `_execute_arrival`. Per ARCHITECTURE_PLAN.md section 8 item 10,
-that decision belongs here instead:
+Responsibilities:
+- Validate and start moves via RuleEngine + RealTimeArbiter.
+- Advance simulated time and decide game_over on king capture.
+- Expose snapshots for rendering.
 
-  - `RealTimeArbiter` now only *reports* a capture
-    (`consume_royal_capture`); it no longer calls `end_game()` itself.
-  - `GameEngine` is the only caller of `Board.end_game()`.
-
-This is the layer callers (currently `main.py`; `app.py` later, in
-step 12) talk to instead of `Board` directly. It mirrors `Board`'s
-public surface (click/wait/print_board/jump) so `main.py` only needs an
-import swap, not a rewrite -- see the diff in that file.
-
-STEP 11 UPDATE: `print_board()` no longer delegates to `Board` (that
-method was removed from `Board` -- see `model/board.py`'s docstring).
-Printing is entirely `view/renderer.py`'s responsibility now; GameEngine
-just hands it the grid via `Board.get_grid()`. GameEngine itself still
-doesn't do any formatting or printing -- it's a pass-through to the view
-layer, same as it's a pass-through to Board for everything else.
+Does NOT contain piece-specific movement logic, rendering, input
+parsing, or pixel mapping.
 """
 
 from model.board import Board

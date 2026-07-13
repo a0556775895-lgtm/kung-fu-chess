@@ -1,16 +1,9 @@
-"""Translate clicks into a selection, then into a GameEngine command.
+# ניהול בחירה ותרגום קליקים לפקודות GameEngine.
+"""Tracks the selected cell and translates clicks into GameEngine commands.
 
-Per Design Guide, section 4/11: Controller does not decide chess
-legality itself and does not call RuleEngine directly. It only tracks
-selected-cell state and, on a second in-board click, delegates to
-GameEngine.request_move. GameEngine returns a MoveResult; Controller
-doesn't need to inspect `reason` for its own logic, only to know
-whether to clear the selection (which happens unconditionally either
-way, per section 11).
-
-Approved extension beyond the Design Guide: clicking a second,
-friendly-colored piece cancels the current selection outright (does
-not attempt a move, does not switch selection to the new piece).
+Does not decide chess legality and does not call RuleEngine directly.
+On a second click: if the target is a friendly piece, the selection
+switches to it; otherwise request_move is called and selection clears.
 """
 
 from model.position import Position

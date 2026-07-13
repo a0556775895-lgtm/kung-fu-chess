@@ -1,3 +1,4 @@
+# ייצוג כלי שחמט — זהות, צבע, סוג ומצב מחזור חיים (IDLE/MOVING/CAPTURED/AIRBORNE).
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,18 +16,18 @@ class PieceColor(Enum):
 
 
 class PieceState(Enum):
-    IDLE = auto()
-    MOVING = auto()
-    CAPTURED = auto()
-    AIRBORNE = auto()
+    IDLE = auto()      # עומד במקומו
+    MOVING = auto()    # בתנועה ליעד
+    CAPTURED = auto()  # נאכל, הוסר מהלוח
+    AIRBORNE = auto()  # בקפיצה, חסין לתפיסה רגילה
 
 
 @dataclass
 class Piece:
-    """Represents a chess piece.
+    """A chess piece: identity (id, color, kind), current cell, and lifecycle state.
 
-    Stores only the piece identity and logical runtime state.
-    Movement logic, timing and legality belong to other layers.
+    Movement logic, timing, and legality belong to other layers.
+    kind may change from 'P' to 'Q' on promotion (applied by RealTimeArbiter at arrival).
     """
 
     id: str
@@ -34,7 +35,6 @@ class Piece:
     kind: str
     cell: Position | None = None
     state: PieceState = PieceState.IDLE
-
 
     def is_moving(self) -> bool:
         return self.state is PieceState.MOVING

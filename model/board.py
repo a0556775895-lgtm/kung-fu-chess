@@ -1,8 +1,12 @@
+# רשת הלוח הלוגית — מיקום כלים, בדיקת גבולות וביצוע הזזה בפועל.
 from model.position import Position
 
 
 class Board:
-    """Stores the logical board grid and manages piece placement."""
+    """The logical board grid: stores piece placement and exposes
+    atomic operations (place, remove, move). Knows nothing about
+    movement rules, timing, or rendering.
+    """
 
     def __init__(self, grid, rows, cols):
         self._grid = grid

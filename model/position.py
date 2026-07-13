@@ -1,9 +1,10 @@
+# קואורדינטת תא על הלוח — value object בלתי-ניתן לשינוי.
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class Position:
-    """Immutable (row, col) coordinate on the board."""
+    """An immutable (row, col) board coordinate."""
 
     row: int
     col: int
