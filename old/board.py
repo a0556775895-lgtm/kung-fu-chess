@@ -13,8 +13,8 @@ class Board:
         `board_lines` is a list of strings where each token is space-separated.
         """
         self._grid = []
-        self._rows = 0
-        self._cols = 0
+        self.rows = 0
+        self.cols = 0
         self._current_time = 0
         self._game_over = False
 
@@ -23,7 +23,7 @@ class Board:
         self._selection_controller = SelectionController(self)
 
         self._parse_board(board_lines)
-        self._geometry.update_dimensions(self._rows, self._cols)
+        self._geometry.update_dimensions(self.rows, self.cols)
 
     @property
     def _pending_source(self):
@@ -66,30 +66,30 @@ class Board:
         self._selection_controller.selected_position = value
 
     def _parse_board(self, board_lines):
-        first_row_width = None
+        firstrow_width = None
 
         for row in board_lines:
             tokens = row.split()
 
-            if first_row_width is None:
-                first_row_width = len(tokens)
-            elif len(tokens) != first_row_width:
+            if firstrow_width is None:
+                firstrow_width = len(tokens)
+            elif len(tokens) != firstrow_width:
                 raise ValueError("ROW_WIDTH_MISMATCH")
 
-            current_row = []
+            currentrow = []
 
             for token in tokens:
                 if token == ".":
-                    current_row.append(None)
+                    currentrow.append(None)
                 else:
                     piece = PieceFactory.create_piece(token)
                     piece.set_board(self)
-                    current_row.append(piece)
+                    currentrow.append(piece)
 
-            self._grid.append(current_row)
+            self._grid.append(currentrow)
 
-        self._rows = len(self._grid)
-        self._cols = first_row_width
+        self.rows = len(self._grid)
+        self.cols = firstrow_width
 
     def click(self, x, y):
         if self._game_over:
@@ -98,7 +98,7 @@ class Board:
         if self._pending_move.finish_time is not None:
             return
 
-        row, col = self._pixel_to_cell(x, y)
+        row, col = self._pixel_tocell(x, y)
 
         if not self._is_inside_board(row, col):
             return
@@ -123,40 +123,40 @@ class Board:
         for row in self._grid:
             print(" ".join(str(piece) if piece else "." for piece in row))
 
-    def _pixel_to_cell(self, x, y):
-        return self._geometry.pixel_to_cell(x, y)
+    def _pixel_tocell(self, x, y):
+        return self._geometry.pixel_tocell(x, y)
 
     def _is_inside_board(self, row, col):
         return self._geometry.is_inside_board(row, col)
 
     def _execute_arrival(self):
-        source_row, source_col = self._pending_source
-        dest_row, dest_col = self._pending_destination
+        sourcerow, sourcecol = self._pending_source
+        destrow, destcol = self._pending_destination
 
-        piece = self._grid[source_row][source_col]
-        captured_piece = self._grid[dest_row][dest_col]
+        piece = self._grid[sourcerow][sourcecol]
+        captured_piece = self._grid[destrow][destcol]
 
         if (
             captured_piece is not None
             and captured_piece.color != piece.color
             and captured_piece.is_airborne()
         ):
-            self._grid[source_row][source_col] = None
+            self._grid[sourcerow][sourcecol] = None
             self._pending_move.mark_executed()
             return
 
-        self._grid[source_row][source_col] = None
-        self._grid[dest_row][dest_col] = piece
+        self._grid[sourcerow][sourcecol] = None
+        self._grid[destrow][destcol] = piece
 
         if (
             piece.symbol == "P"
             and (
-                (piece.color == PieceColor.WHITE and dest_row == 0)
+                (piece.color == PieceColor.WHITE and destrow == 0)
                 or
-                (piece.color == PieceColor.BLACK and dest_row == self._rows - 1)
+                (piece.color == PieceColor.BLACK and destrow == self.rows - 1)
             )
         ):
-            self._grid[dest_row][dest_col] = PieceFactory.create_piece(
+            self._grid[destrow][destcol] = PieceFactory.create_piece(
                 f"{piece.color.value}Q"
             )
 
@@ -174,16 +174,16 @@ class Board:
     def _is_path_clear(
         self,
         piece,
-        source_row,
-        source_col,
-        destination_row,
-        destination_col,
+        sourcerow,
+        sourcecol,
+        destinationrow,
+        destinationcol,
         ):
-            path = piece.get_path_cells(
-                source_row,
-                source_col,
-                destination_row,
-                destination_col,
+            path = piece.get_pathcells(
+                sourcerow,
+                sourcecol,
+                destinationrow,
+                destinationcol,
             )
 
             for row, col in path:
@@ -192,16 +192,15 @@ class Board:
 
             return True
     
-    def get_rows(self):
-        return self._rows
+    
 
     def get_piece_at(self, row, col):
         """Return the piece at (row, col), or None if empty."""
         return self._grid[row][col]
 
-    def is_path_clear(self, piece, source_row, source_col, destination_row, destination_col):
+    def is_path_clear(self, piece, sourcerow, sourcecol, destinationrow, destinationcol):
         """Return True if no piece blocks the path for this move."""
-        return self._is_path_clear(piece, source_row, source_col, destination_row, destination_col)
+        return self._is_path_clear(piece, sourcerow, sourcecol, destinationrow, destinationcol)
 
     @property
     def current_time(self):
@@ -216,7 +215,7 @@ class Board:
         if self._game_over:
             return
 
-        row, col = self._pixel_to_cell(x, y)
+        row, col = self._pixel_tocell(x, y)
 
         if not self._is_inside_board(row, col):
             return

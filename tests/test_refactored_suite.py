@@ -36,17 +36,17 @@ import main as main_module
 class FakeBoard:
     def __init__(self, grid, rows=1, cols=1):
         self._grid = grid
-        self._rows = rows
-        self._cols = cols
+        self.rows = rows
+        self.cols = cols
 
     def get_piece_at(self, position):
         return self._grid[position.row][position.col]
 
     def is_inside_board(self, position):
-        return 0 <= position.row < self._rows and 0 <= position.col < self._cols
+        return 0 <= position.row < self.rows and 0 <= position.col < self.cols
 
-    def get_rows(self):
-        return self._rows
+    def getrows(self):
+        return self.rows
 
 
 class DummyRuleViolation(RuleViolation):
@@ -57,7 +57,7 @@ def make_board(lines):
     return Board(lines)
 
 
-def test_piece_position_and_state_lifecycle():
+def test_piece_position_andstate_lifecycle():
     piece = Piece(PieceColor.WHITE, "P", cell=Position(3, 4), id="custom")
     assert piece.id == "custom"
     assert piece.color == PieceColor.WHITE
@@ -67,7 +67,7 @@ def test_piece_position_and_state_lifecycle():
     assert piece.state == PieceState.IDLE
     assert not piece.is_moving()
 
-    piece.set_cell(Position(5, 6))
+    piece.setcell(Position(5, 6))
     assert piece.cell == Position(5, 6)
 
     piece.start_move()
@@ -95,16 +95,16 @@ def test_piece_position_and_state_lifecycle():
     assert (row, col) == (1, 2)
 
 
-def test_game_state_and_board_core_operations():
-    game_state = GameState()
-    game_state.advance_time(50)
-    assert game_state.current_time == 50
-    assert game_state.game_over is False
-    game_state.end_game()
-    assert game_state.game_over is True
+def test_gamestate_and_board_core_operations():
+    gamestate = GameState()
+    gamestate.advance_time(50)
+    assert gamestate.current_time == 50
+    assert gamestate.game_over is False
+    gamestate.end_game()
+    assert gamestate.game_over is True
 
     board = make_board(["wR . .", ". . ."])
-    assert board.get_rows() == 2
+    assert board.getrows() == 2
     assert board.get_grid()[0][0].kind == "R"
     assert board.get_piece_at(Position(0, 0)).kind == "R"
     assert board.is_inside_board(Position(0, 0)) is True
@@ -182,12 +182,12 @@ def test_piece_rules_and_rule_engine_validation():
     with pytest.raises(ValueError):
         piece_rules.is_valid_move("X", white, source, destination, None, 8)
 
-    assert piece_rules.get_path_cells("P", white, Position(6, 0), Position(4, 0)) == [Position(5, 0)]
-    assert piece_rules.get_path_cells("Q", white, Position(2, 2), Position(4, 4)) == [Position(3, 3)]
-    assert piece_rules.get_path_cells("R", white, Position(2, 2), Position(2, 4)) == [Position(2, 3)]
-    assert piece_rules.get_path_cells("B", white, Position(2, 2), Position(4, 4)) == [Position(3, 3)]
-    assert piece_rules.get_path_cells("N", white, Position(2, 2), Position(4, 3)) == []
-    assert piece_rules.get_path_cells("K", white, Position(2, 2), Position(1, 2)) == []
+    assert piece_rules.get_pathcells("P", white, Position(6, 0), Position(4, 0)) == [Position(5, 0)]
+    assert piece_rules.get_pathcells("Q", white, Position(2, 2), Position(4, 4)) == [Position(3, 3)]
+    assert piece_rules.get_pathcells("R", white, Position(2, 2), Position(2, 4)) == [Position(2, 3)]
+    assert piece_rules.get_pathcells("B", white, Position(2, 2), Position(4, 4)) == [Position(3, 3)]
+    assert piece_rules.get_pathcells("N", white, Position(2, 2), Position(4, 3)) == []
+    assert piece_rules.get_pathcells("K", white, Position(2, 2), Position(1, 2)) == []
 
     fake_board = FakeBoard(
         [[None, None], [None, None]],
@@ -297,7 +297,7 @@ def test_controller_selection_and_move_scheduling(capsys):
     assert board6._arbiter.has_active_motion(board6.get_piece_at(Position(0, 0))) is True
 
 
-def test_motion_and_arbiter_arrival_collision_and_promotion():
+def test_motion_and_arbiter_arrivalcollision_and_promotion():
     motion = Motion(Piece(PieceColor.WHITE, "R"), Position(0, 0), Position(0, 2), 0, 10, 20)
     assert motion.is_arrival_pending(5) is False
     assert motion.is_arrival_pending(10) is True

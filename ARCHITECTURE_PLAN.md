@@ -37,7 +37,7 @@ kungfu_chess/
 │   ├── position.py          # Position: row, col
 │   ├── piece.py              # Piece: id, color, kind, cell, state
 │   ├── board.py               # Board: אחסון, גבולות, מיקום, ביצוע בלבד
-│   └── game_state.py          # GameState: game_over, current_time, תוצאה
+│   └── gamestate.py          # GameState: game_over, current_time, תוצאה
 │
 ├── rules/
 │   ├── piece_rules.py         # חוקי תנועה לכל סוג כלי (Movement Design)
@@ -97,11 +97,11 @@ kungfu_chess/
 
 | קובץ/רכיב קיים | הופך ל־ | הערות |
 |---|---|---|
-| `board.py` (`_grid`, `_rows`, `_cols`) | `model/board.py` | Board נשאר Model בלבד — **בלי** לוגיקת חוקיות. רק אחסון + ביצוע לאחר אישור. |
-| `board.py` (`_current_time`, `_game_over`) | `model/game_state.py` | מופרד מ-Board כישות עצמאית. |
+| `board.py` (`_grid`, `rows`, `cols`) | `model/board.py` | Board נשאר Model בלבד — **בלי** לוגיקת חוקיות. רק אחסון + ביצוע לאחר אישור. |
+| `board.py` (`_current_time`, `_game_over`) | `model/gamestate.py` | מופרד מ-Board כישות עצמאית. |
 | `board.py._parse_board` | `io/board_parser.py` | טהור I/O, לא חלק מה-Model. |
 | `board.py.print_board` | `io/board_printer.py` | טהור I/O. |
-| `piece.py` (בסיס) + כל תת-מחלקה | `model/piece.py` + `rules/piece_rules.py` | **הפרדה חשובה:** הזהות (`id`, `color`, `kind`, `cell`, `state`) עוברת ל-Model; ה-`is_valid_move`/`get_path_cells` עוברים ל-`piece_rules.py`. |
+| `piece.py` (בסיס) + כל תת-מחלקה | `model/piece.py` + `rules/piece_rules.py` | **הפרדה חשובה:** הזהות (`id`, `color`, `kind`, `cell`, `state`) עוברת ל-Model; ה-`is_valid_move`/`get_pathcells` עוברים ל-`piece_rules.py`. |
 | `piece_factory.py` | נשאר בערך זהה, כנראה עובר ל-`model/` או `rules/` (לא צויין במפורש) | ליצירה מ-token. |
 | `pending_move.py` | `realtime/motion.py` (ייצוג תזוזה בודדת) | **משתנה מהותית**: כיום אובייקט יחיד; במבנה החדש כל `Motion` הוא ישות בפני עצמה, וריבוי מהן מנוהל ע"י `real_time_arbiter.py`. |
 | `board.wait()` (הלוגיקה שמריצה pending move) | `realtime/real_time_arbiter.py` | מנהל **את כל** התנועות הפעילות בו-זמנית, לא רק אחת. |
@@ -182,7 +182,7 @@ class PathBlockedError(RuleViolation):
    `state == MOVING/JUMPING` → `PieceAlreadyMovingError`
 5. קריאה ל-`piece_rules` (Movement Design) לאימות התבנית → `IllegalPatternError`
    אם לא תואם
-6. בדיקת נתיב פנוי (למי שצריך `get_path_cells`) → `PathBlockedError`
+6. בדיקת נתיב פנוי (למי שצריך `get_pathcells`) → `PathBlockedError`
 7. אם הכל עבר: **מחזיר את המיקום/את אישור המהלך** (לא exception — נתיב הצלחה רגיל)
 
 **נקודת החלטה פתוחה:** מי תופס את ה-exceptions האלה בפועל — ה-`Controller`?
@@ -202,7 +202,7 @@ class PathBlockedError(RuleViolation):
 | מה מייצג תזוזה בודדת? | `realtime/motion.py` — יורש קונספטואלית מ-`PendingMove` הקיים, אבל תומך בריבוי מופעים במקביל (מוחזק ע"י ה-Arbiter, לא ע"י Board ישירות) |
 
 ### השלכה על `real_time_arbiter.py`
-- מחזיק **אוסף** של `Motion` פעילים (למשל `dict[piece_id, Motion]`).
+- מחזיק **אוסף** של `Motion` פעילים (למשל `dict[pieceid, Motion]`).
 - בכל `tick`/`wait`, עובר על **כל** התנועות הפעילות (לא רק אחת), בודק אילו הגיעו
   ל-arrival/finish, ומבצע.
 - חייב לטפל בהתנגשות בין שתי תנועות שמגיעות לאותו תא יעד באותו רגע (כלל collision —
@@ -307,10 +307,10 @@ class PathBlockedError(RuleViolation):
 1. ✅ **`model/position.py`** — הושלם. עטיפה ל-`(row, col)`, כולל `__iter__`
    שמאפשר `row, col = position` בנקודות מעבר עם קוד ישן שעדיין מצפה ל-tuple.
 2. ✅ **`model/piece.py`** — הושלם. `id` (מזהה רץ, `f"{kind}{counter}"`),
-   `cell`, `state`. `set_cell` הוא הדרך היחידה לעדכן מיקום (Board הוא
+   `cell`, `state`. `setcell` הוא הדרך היחידה לעדכן מיקום (Board הוא
    הקורא היחיד). **תוספת לא-מתוכננת:** `start_move()`/`finish_move()`
    (ר' סעיף 7, פריט 8).
-3. ✅ **`rules/piece_rules.py`** — הושלם. `is_valid_move`/`get_path_cells`
+3. ✅ **`rules/piece_rules.py`** — הושלם. `is_valid_move`/`get_pathcells`
    מכל תת-מחלקת piece הישנה, ללא שינוי לוגי. גם `piece_factory.py` נכנס
    בפועל ל-`rules/` (ר' סעיף 7, פריט 4).
 4. ✅ **`rules/rule_engine.py`** — הושלם, עם היררכיית ה-exceptions המלאה
@@ -320,7 +320,7 @@ class PathBlockedError(RuleViolation):
    `model/`) — צומצם בהדרגה: שלב 7 הוציא רק parsing/printing; שלב 9 הוציא גם
    את `_execute_arrival`/`_finish_pending_move` (עברו ל-Arbiter). Board כיום
    הוא בעיקר grid + `place_piece`/`remove_piece` שה-Arbiter קורא להם.
-6. ✅ **`model/game_state.py`** — הושלם (שלב 7). `current_time`/`game_over`
+6. ✅ **`model/gamestate.py`** — הושלם (שלב 7). `current_time`/`game_over`
    הוצאו מ-`Board`, באותו pattern שכבר שימש את `PendingMove`.
 7. ✅ **`boardio/board_parser.py`, `boardio/board_printer.py`** — הושלמו
    (שלב 7). מיקום בפועל: `boardio/`, לא `io/` כמתוכנן במקור (כנראה כדי

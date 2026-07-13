@@ -23,32 +23,74 @@ layer, same as it's a pass-through to Board for everything else.
 """
 
 from model.board import Board
-from view.renderer import print_board as render_board
+from model.game_state import GameState
+from model.piece import PieceState
+from realtime.real_time_arbiter import RealTimeArbiter
+from rules.rule_engine import RuleEngine
+from view.renderer import render_snapshot, GameSnapshot, PieceSnapshot
 
 
 class GameEngine:
-    def __init__(self, board_lines):
-        self._board = Board(board_lines)
+    def __init__(self, board: Board):
+        self._board = board
+        self._game_state = GameState()
+        self._arbiter = RealTimeArbiter(board)
+        self._rule_engine = RuleEngine()
 
-    def click(self, x, y):
-        self._board.click(x, y)
+    def request_jump(self, source):
+        if self._game_state.game_over:
+            return
+        piece = self._board.get_piece_at(source)
+        if piece is None or piece.is_moving() or piece.state == PieceState.CAPTURED:
+            return
+        self._arbiter.start_jump(piece)
+
+    def request_move(self, source, destination):
+        if self._game_state.game_over:
+            return _MoveResult(False, "game_over")
+
+        piece = self._board.get_piece_at(source)
+        if piece is not None and self._arbiter.has_active_motion(piece):
+            return _MoveResult(False, "motion_in_progress")
+
+        validation = self._rule_engine.validate_move(self._board, source, destination)
+        if not validation.is_valid:
+            return _MoveResult(False, validation.reason)
+
+        self._arbiter.start_motion(piece, source, destination)
+        return _MoveResult(True, "ok")
 
     def wait(self, milliseconds):
-        self._board.wait(milliseconds)
+        arrival_events = self._arbiter.advance_time(milliseconds)
+        if arrival_events.king_captured:
+            self._game_state.end_game()
 
-        # Must run AFTER board.wait(): that call is what drives
-        # arbiter.tick(), which is what may set the flag we're reading
-        # here. This is the one place the royal-capture decision is
-        # actually made now (see module docstring).
-        if self._board.consume_royal_capture():
-            self._board.end_game()
-
-    def jump(self, x, y):
-        self._board.jump(x, y)
-
-    def print_board(self):
-        render_board(self._board.get_grid())
+    def snapshot(self, selected_cell=None):
+        pieces = [
+            PieceSnapshot(
+                kind=p.kind,
+                color=str(p.color),
+                cell=p.cell,
+                state=p.state.name,
+            )
+            for row in self._board.get_grid()
+            for p in row
+            if p is not None and p.state != PieceState.CAPTURED
+        ]
+        return GameSnapshot(
+            board_width=self._board.cols,
+            board_height=self._board.rows,
+            pieces=pieces,
+            selected_cell=selected_cell,
+            game_over=self._game_state.game_over,
+        )
 
     @property
     def game_over(self):
-        return self._board.game_over
+        return self._game_state.game_over
+
+
+class _MoveResult:
+    def __init__(self, is_accepted, reason):
+        self.is_accepted = is_accepted
+        self.reason = reason

@@ -2,17 +2,21 @@
 
 This module replaces the old per-subclass files (pawn.py, queen.py, rook.py,
 bishop.py, knight.py, king.py). Instead of each kind being a `Piece`
-subclass with its own `is_valid_move`/`get_path_cells`, every kind is just
+subclass with its own `is_valid_move`/`get_pathcells`, every kind is just
 a string ("P", "Q", "R", "B", "N", "K") and this module dispatches on it.
-
-Ported 1:1 from the old files — no behavioural change, only relocation.
 """
 
 from model.position import Position
 from model.piece import PieceColor
 
 
-# --- Per-kind metadata (was: constructor args in each old subclass) -------
+# --- Per-kind timing (owned here, NOT in RealTimeArbiter, so the
+# Arbiter never needs to branch on a piece's kind -- it only calls
+# get_arrival_duration() and gets back a number). Adding a new piece
+# kind with standard (steps * per-step time) timing means adding one
+# entry to MOVE_TIME. Adding a kind whose movement is a flat jump
+# (distance-independent, like Knight) means adding it to JUMP_DURATION
+# and to JUMP_kindS as well. ---------------------------------------
 
 MOVE_TIME = {
     "P": 1000,
@@ -32,7 +36,23 @@ JUMP_DURATION = {
     "N": 3000,
 }
 
+# Kinds whose movement is a flat jump rather than steps along a line --
+# their duration comes straight from get_jump_duration(), with no
+# multiplication by distance crossed (confirmed by tests
+# knight_L_valid / knight_jumps_over_blockers: a knight jump always
+# takes 3000ms regardless of the fact a knight move isn't a straight
+# line of cells).
+JUMP_kindS = {"N"}
+
 ROYAL_KINDS = {"K"}
+
+
+def get_promotion_kind(kind: str, color: PieceColor, destination: Position, board_rows: int):
+    """Return 'Q' if this piece should be promoted, otherwise None."""
+    if kind != "P":
+        return None
+    promotion_row = 0 if color == PieceColor.WHITE else board_rows - 1
+    return "Q" if destination.row == promotion_row else None
 
 
 def get_move_time(kind: str) -> int:
@@ -47,6 +67,24 @@ def is_royal(kind: str) -> bool:
     return kind in ROYAL_KINDS
 
 
+def get_arrival_duration(kind: str, source: Position, destination: Position) -> int:
+    """Single timing entry point for RealTimeArbiter.
+
+    RealTimeArbiter calls only this function -- it never branches on
+    `kind` itself. Default rule (Design Guide, section 10): N cells
+    crossed = N * get_move_time(kind). Kinds in JUMP_kindS instead get
+    a flat get_jump_duration(kind), independent of distance.
+    """
+    if kind in JUMP_kindS:
+        return get_jump_duration(kind)
+
+    steps = max(
+        abs(destination.row - source.row),
+        abs(destination.col - source.col),
+    )
+    return steps * get_move_time(kind)
+
+
 # --- Movement validation (was: is_valid_move on each subclass) ------------
 
 def is_valid_move(
@@ -55,20 +93,18 @@ def is_valid_move(
     source: Position,
     destination: Position,
     destination_piece,
-    board_rows: int = None,
+    boardrows: int = None,
 ) -> bool:
     """Return True if moving `kind`/`color` from source to destination
     matches that kind's movement pattern (ignores board occupancy/blocking
     beyond what each kind's own rule requires, e.g. pawn capture-vs-forward).
 
-    `board_rows` is only required for Pawn (to know its starting row) —
-    the old Pawn read this via `self.get_board().get_rows()`; here it must
-    be passed in explicitly since Piece no longer holds a board reference.
+    `boardrows` is only required for Pawn (to know its starting row).
     """
 
     if kind == "P":
         return _pawn_is_valid_move(
-            color, source, destination, destination_piece, board_rows
+            color, source, destination, destination_piece, boardrows
         )
 
     if kind == "Q":
@@ -89,7 +125,7 @@ def is_valid_move(
     raise ValueError(f"UNKNOWN_KIND: {kind}")
 
 
-def get_path_cells(kind: str, color: PieceColor, source: Position, destination: Position):
+def get_pathcells(kind: str, color: PieceColor, source: Position, destination: Position):
     """Return intermediate cells between source and destination as a list
     of Position, excluding source and destination themselves.
 
@@ -99,37 +135,37 @@ def get_path_cells(kind: str, color: PieceColor, source: Position, destination: 
     """
 
     if kind == "P":
-        return _pawn_path_cells(color, source, destination)
+        return _pawn_pathcells(color, source, destination)
 
     if kind == "Q":
-        return _queen_path_cells(source, destination)
+        return _queen_pathcells(source, destination)
 
     if kind == "R":
-        return _rook_path_cells(source, destination)
+        return _rook_pathcells(source, destination)
 
     if kind == "B":
-        return _bishop_path_cells(source, destination)
+        return _bishop_pathcells(source, destination)
 
     # Knight and King: single-step moves, no intermediate cells.
     return []
 
 
-# --- Pawn (was: pawn.py) ---------------------------------------------------
+# --- Pawn -------------------------------------------------------------
 
-def _pawn_is_valid_move(color, source, destination, destination_piece, board_rows):
+def _pawn_is_valid_move(color, source, destination, destination_piece, boardrows):
     if destination_piece is None:
-        return _pawn_is_valid_forward_move(color, source, destination, board_rows)
+        return _pawn_is_valid_forward_move(color, source, destination, boardrows)
 
     return _pawn_is_valid_capture(color, source, destination, destination_piece)
 
 
-def _pawn_is_valid_forward_move(color, source, destination, board_rows):
+def _pawn_is_valid_forward_move(color, source, destination, boardrows):
     direction = -1 if color == PieceColor.WHITE else 1
 
     if color == PieceColor.WHITE:
-        start_row = board_rows - 2
+        startrow = boardrows - 2
     else:
-        start_row = 1
+        startrow = 1
 
     # One-cell move.
     if (
@@ -140,7 +176,7 @@ def _pawn_is_valid_forward_move(color, source, destination, board_rows):
 
     # Two-cell move from the starting row.
     return (
-        source.row == start_row
+        source.row == startrow
         and destination.row == source.row + (2 * direction)
         and destination.col == source.col
     )
@@ -156,7 +192,7 @@ def _pawn_is_valid_capture(color, source, destination, destination_piece):
     )
 
 
-def _pawn_path_cells(color, source, destination):
+def _pawn_pathcells(color, source, destination):
     if abs(destination.row - source.row) == 2:
         direction = -1 if color == PieceColor.WHITE else 1
         return [Position(source.row + direction, source.col)]
@@ -164,7 +200,7 @@ def _pawn_path_cells(color, source, destination):
     return []
 
 
-# --- Queen (was: queen.py) -------------------------------------------------
+# --- Queen --------------------------------------------------------------
 
 def _queen_is_valid_move(source, destination):
     row_distance = abs(destination.row - source.row)
@@ -177,13 +213,13 @@ def _queen_is_valid_move(source, destination):
     )
 
 
-def _queen_path_cells(source, destination):
+def _queen_pathcells(source, destination):
     path = []
 
     row_step = (destination.row > source.row) - (destination.row < source.row)
     col_step = (destination.col > source.col) - (destination.col < source.col)
 
-    if row_step == 0 and col_step == 0:
+    if row_step == 0 and col_step == 0:  # pragma: no cover
         return path
 
     row, col = source.row + row_step, source.col + col_step
@@ -195,7 +231,7 @@ def _queen_path_cells(source, destination):
     return path
 
 
-# --- Rook (was: rook.py) ---------------------------------------------------
+# --- Rook ---------------------------------------------------------------
 
 def _rook_is_valid_move(source, destination):
     row_distance = abs(destination.row - source.row)
@@ -207,7 +243,7 @@ def _rook_is_valid_move(source, destination):
     )
 
 
-def _rook_path_cells(source, destination):
+def _rook_pathcells(source, destination):
     path = []
 
     if source.row == destination.row:
@@ -222,7 +258,7 @@ def _rook_path_cells(source, destination):
     return path
 
 
-# --- Bishop (was: bishop.py) -----------------------------------------------
+# --- Bishop ---------------------------------------------------------------
 
 def _bishop_is_valid_move(source, destination):
     row_distance = abs(destination.row - source.row)
@@ -231,7 +267,7 @@ def _bishop_is_valid_move(source, destination):
     return row_distance == col_distance and row_distance > 0
 
 
-def _bishop_path_cells(source, destination):
+def _bishop_pathcells(source, destination):
     path = []
 
     row_step = 1 if destination.row > source.row else -1
@@ -248,7 +284,7 @@ def _bishop_path_cells(source, destination):
     return path
 
 
-# --- Knight (was: knight.py) ------------------------------------------------
+# --- Knight -----------------------------------------------------------------
 
 def _knight_is_valid_move(source, destination):
     row_distance = abs(destination.row - source.row)
@@ -260,7 +296,7 @@ def _knight_is_valid_move(source, destination):
     )
 
 
-# --- King (was: king.py) ----------------------------------------------------
+# --- King ----------------------------------------------------------------
 
 def _king_is_valid_move(source, destination):
     row_distance = abs(destination.row - source.row)

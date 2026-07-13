@@ -12,6 +12,7 @@ from model.position import Position
 
 
 class BoardMapper:
+
     """Translate pixel coordinates to board cells and check bounds."""
 
     def __init__(self, rows, cols, cell_size=100):
@@ -26,7 +27,7 @@ class BoardMapper:
     def pixel_to_position(self, x, y) -> Position:
         """Convert pixel coordinates to a board `Position`.
 
-        Ported 1:1 from the old `BoardGeometry.pixel_to_cell` (same
+        Ported 1:1 from the old `BoardGeometry.pixel_tocell` (same
         `y // cell_size, x // cell_size` math) — only the return type
         changed, from a `(row, col)` tuple to a `Position`.
         """

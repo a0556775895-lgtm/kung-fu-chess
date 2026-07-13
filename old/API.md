@@ -3,15 +3,15 @@
 This file lists the primary classes, the instance variables they hold, and the methods or properties that read or mutate those variables. Use it as a quick reference when changing stateful behaviour.
 
 - **Board** ([board.py](board.py))
-  - Variables: `_grid`, `_rows`, `_cols`, `_current_time`, `_game_over`, `_pending_move`, `_geometry`, `_selection_controller`
+  - Variables: `_grid`, `rows`, `cols`, `_current_time`, `_game_over`, `_pending_move`, `_geometry`, `_selection_controller`
   - Legacy test-facing properties (wrappers): `_pending_source`, `_pending_destination`, `_pending_arrival_time`, `_pending_finish_time`, `_selected_position`
-  - Key methods: `click(x, y)`, `wait(milliseconds)`, `print_board()`, `jump(x, y)`, `get_rows()`, `_parse_board()`, `_execute_arrival()`, `_finish_pending_move()`, `_is_path_clear()`
+  - Key methods: `click(x, y)`, `wait(milliseconds)`, `print_board()`, `jump(x, y)`, `getrows()`, `_parse_board()`, `_execute_arrival()`, `_finish_pending_move()`, `_is_path_clear()`
   - Public helper methods (added during refactor): `get_piece_at(row, col)`, `is_path_clear(piece, srow, scol, drow, dcol)`, `current_time` (property), `schedule_move(source, destination, arrival_time, finish_time)`
 
 - **Piece** ([piece.py](piece.py))
-  - Variables: `_color`, `_symbol`, `_move_time`, `_jump_duration`, `_board`, `_state`, `_jump_finish_time`
+  - Variables: `color`, `_symbol`, `_move_time`, `_jump_duration`, `_board`, `state`, `jump_finish_time`
   - Accessors / properties: `color`, `move_time`, `symbol`, `get_board()`, `set_board(board)`, `state` (getter/setter)
-  - Key methods: `is_valid_move(...)` (abstract), `get_path_cells(...)`, `start_jump(current_time)`, `finish_jump()`, `is_airborne()`, `should_finish_jump(current_time)`, `is_royal()`
+  - Key methods: `is_valid_move(...)` (abstract), `get_pathcells(...)`, `start_jump(current_time)`, `finish_jump()`, `is_airborne()`, `should_finish_jump(current_time)`, `is_royal()`
 
 - **PieceFactory** ([PieceFactory.py](PieceFactory.py))
   - No persistent instance state (factory)
@@ -25,7 +25,7 @@ This file lists the primary classes, the instance variables they hold, and the m
 
 - **BoardGeometry** ([board_geometry.py](board_geometry.py))
   - Variables: `rows`, `cols`, `cell_size`
-  - Key methods: `update_dimensions(rows, cols)`, `pixel_to_cell(x, y)`, `is_inside_board(row, col)`
+  - Key methods: `update_dimensions(rows, cols)`, `pixel_tocell(x, y)`, `is_inside_board(row, col)`
 
 - **SelectionController** ([selection_controller.py](selection_controller.py))
   - Variables: `_selected_position` (internal)

@@ -7,43 +7,36 @@ and stores the result.
 
 from model.position import Position
 from rules.piece_factory import PieceFactory
+from model.board import Board
+class BoardParser:
+    @staticmethod
+    def parse(board_lines):
+        """Creates a Board instance from textual input."""  
+        grid = []
+        firstrow_width = None
 
+        for row_index, row in enumerate(board_lines):
+            tokens = row.split()
 
-def parse_board(board_lines):
-    """Parse `board_lines` (list of space-separated token strings) into
-    a grid of Piece/None.
+            if firstrow_width is None:
+                firstrow_width = len(tokens)
+            elif len(tokens) != firstrow_width:
+                raise ValueError("ROW_WIDTH_MISMATCH")
 
-    Returns `(grid, rows, cols)`.
-    Raises `ValueError("ROW_WIDTH_MISMATCH")` if rows have inconsistent
-    widths — same error contract as the original code, so `main.py`'s
-    existing error handling doesn't need to change.
-    """
+            currentrow = []
 
-    grid = []
-    first_row_width = None
+            for col_index, token in enumerate(tokens):
+                if token == ".":
+                    currentrow.append(None)
+                else:
+                    piece = PieceFactory.create_piece(
+                        token, cell=Position(row_index, col_index)
+                    )
+                    currentrow.append(piece)
 
-    for row_index, row in enumerate(board_lines):
-        tokens = row.split()
+            grid.append(currentrow)
 
-        if first_row_width is None:
-            first_row_width = len(tokens)
-        elif len(tokens) != first_row_width:
-            raise ValueError("ROW_WIDTH_MISMATCH")
+        rows = len(grid)
+        cols = firstrow_width
 
-        current_row = []
-
-        for col_index, token in enumerate(tokens):
-            if token == ".":
-                current_row.append(None)
-            else:
-                piece = PieceFactory.create_piece(
-                    token, cell=Position(row_index, col_index)
-                )
-                current_row.append(piece)
-
-        grid.append(current_row)
-
-    rows = len(grid)
-    cols = first_row_width
-
-    return grid, rows, cols
+        return Board(grid, rows, cols)

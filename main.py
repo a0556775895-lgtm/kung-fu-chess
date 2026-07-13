@@ -1,23 +1,20 @@
-# Git repository: https://github.com/a0556775895-lgtm/kung-fu-chess
+"""Entry point: parse input and run commands through the real
+Controller -> GameEngine -> Renderer path.
+
+Input should contain a `Board:` section and optional `Commands:`
+section.
+"""
 
 import sys
+
+from boardio.board_parser import BoardParser
 from engine.game_engine import GameEngine
+from input.board_mapper import BoardMapper
+from input.controller import Controller
+from view.renderer import render_snapshot
 
 
 def main():
-    """Entry point: parse input and run commands on a `GameEngine`.
-
-    Input should contain a `Board:` section and optional `Commands:` section.
-
-    STEP 10 CHANGE: was `from model.board import Board` / `Board(board_lines)`.
-    main.py now talks to `GameEngine`, which owns the game-over decision
-    (see engine/game_engine.py). GameEngine mirrors Board's public surface
-    1:1, so nothing else in this function needed to change -- the
-    `try/except ValueError` still works unmodified because `GameEngine.__init__`
-    builds a `Board` internally and the parse error propagates through it
-    exactly as before.
-    """
-
     input_data = sys.stdin.read()
 
     if "Board:" not in input_data:
@@ -38,13 +35,14 @@ def main():
     ]
 
     try:
-        game = GameEngine(board_lines)
+        board = BoardParser.parse(board_lines)
     except ValueError as error:
-        if str(error) == "UNKNOWN_TOKEN":
-            print("ERROR UNKNOWN_TOKEN")
-        elif str(error) == "ROW_WIDTH_MISMATCH":
-            print("ERROR ROW_WIDTH_MISMATCH")
+        print(f"ERROR {error}")
         return
+
+    game_engine = GameEngine(board)
+    board_mapper = BoardMapper(board.rows, board.cols)
+    controller = Controller(board, game_engine, board_mapper)
 
     commands = [
         line.strip()
@@ -55,23 +53,23 @@ def main():
     for command in commands:
         parts = command.split()
 
-        if parts[0] == "click":
+        if parts[0] == "jump":
             x = int(parts[1])
             y = int(parts[2])
-            game.click(x, y)
+            game_engine.request_jump(board_mapper.pixel_to_position(x, y))
+
+        elif parts[0] == "click":
+            x = int(parts[1])
+            y = int(parts[2])
+            controller.handle_pixel_click(x, y)
 
         elif parts[0] == "wait":
             milliseconds = int(parts[1])
-            game.wait(milliseconds)
+            game_engine.wait(milliseconds)
 
         elif command == "print board":
-            game.print_board()
-
-        elif parts[0] == "jump":
-            x = int(parts[1])
-            y = int(parts[2])
-            game.jump(x, y)
+            render_snapshot(game_engine.snapshot())
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()
