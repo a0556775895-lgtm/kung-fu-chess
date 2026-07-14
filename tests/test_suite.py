@@ -402,6 +402,9 @@ def test_arbiter_advance_time_arrival():
     assert len(events.events) == 1
     assert board.get_piece_at(Position(0, 2)) is piece
     assert board.get_piece_at(Position(0, 0)) is None
+    # Arrival starts a LONG_REST cooldown rather than going straight to IDLE.
+    assert piece.state == PieceState.LONG_REST
+    arbiter.advance_time(piece_rules.get_long_rest_duration())
     assert piece.state == PieceState.IDLE
 
 

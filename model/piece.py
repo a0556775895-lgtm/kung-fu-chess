@@ -16,10 +16,12 @@ class PieceColor(Enum):
 
 
 class PieceState(Enum):
-    IDLE = auto()      # עומד במקומו
-    MOVING = auto()    # בתנועה ליעד
-    CAPTURED = auto()  # נאכל, הוסר מהלוח
-    AIRBORNE = auto()  # בקפיצה, חסין לתפיסה רגילה
+    IDLE = auto()        # עומד במקומו
+    MOVING = auto()      # בתנועה ליעד
+    CAPTURED = auto()    # נאכל, הוסר מהלוח
+    AIRBORNE = auto()    # בקפיצה, חסין לתפיסה רגילה
+    LONG_REST = auto()   # מנוחה אחרי מהלך רגיל, אסור לזוז
+    SHORT_REST = auto()  # מנוחה אחרי קפיצה, אסור לזוז
 
 
 @dataclass
@@ -41,6 +43,9 @@ class Piece:
 
     def is_airborne(self) -> bool:
         return self.state is PieceState.AIRBORNE
+
+    def is_resting(self) -> bool:
+        return self.state in (PieceState.LONG_REST, PieceState.SHORT_REST)
 
     def __str__(self) -> str:
         return f"{self.color}{self.kind}"

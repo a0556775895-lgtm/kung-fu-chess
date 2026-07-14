@@ -47,6 +47,11 @@ JUMP_kindS = {"N"}
 
 ROYAL_KINDS = {"K"}
 
+# Cooldown after arrival: a piece can't start a new move/jump while resting.
+# LONG_REST follows a normal move's arrival; SHORT_REST follows a jump landing.
+LONG_REST_DURATION_MS = 6000
+SHORT_REST_DURATION_MS = 1000
+
 
 def get_promotion_kind(kind: str, color: PieceColor, destination: Position, board_rows: int):
     """Return 'Q' if this piece should be promoted, otherwise None."""
@@ -66,6 +71,14 @@ def get_jump_duration(kind: str) -> int:
 
 def is_royal(kind: str) -> bool:
     return kind in ROYAL_KINDS
+
+
+def get_long_rest_duration() -> int:
+    return LONG_REST_DURATION_MS
+
+
+def get_short_rest_duration() -> int:
+    return SHORT_REST_DURATION_MS
 
 
 def get_arrival_duration(kind: str, source: Position, destination: Position) -> int:

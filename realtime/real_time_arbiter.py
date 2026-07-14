@@ -47,6 +47,7 @@ class RealTimeArbiter:
         # bookkeeping needed for it.
         self._motions = {}
         self._airborne = {}
+        self._resting = {}
         self._current_time = 0
         self._royal_captured = False
 
@@ -76,10 +77,11 @@ class RealTimeArbiter:
         self._current_time += ms
         events = self._resolve_arrivals()
         self._resolve_landed()
+        self._resolve_resting()
         return ArrivalEvents(events=events, king_captured=self.consume_royal_capture())
 
     def _resolve_landed(self):
-        """Return airborne pieces whose jump window has expired to IDLE."""
+        """Move airborne pieces whose jump window has expired into SHORT_REST."""
         landed = [pid for pid, land_time in self._airborne.items()
                   if self._current_time >= land_time]
         for pid in landed:
@@ -87,6 +89,20 @@ class RealTimeArbiter:
         for row in self._board.get_grid():
             for piece in row:
                 if piece is not None and piece.is_airborne() and piece.id not in self._airborne:
+                    piece.state = PieceState.SHORT_REST
+                    self._resting[piece.id] = (
+                        self._current_time + piece_rules.get_short_rest_duration()
+                    )
+
+    def _resolve_resting(self):
+        """Return resting pieces whose cooldown has expired to IDLE."""
+        finished = [pid for pid, end_time in self._resting.items()
+                    if self._current_time >= end_time]
+        for pid in finished:
+            del self._resting[pid]
+        for row in self._board.get_grid():
+            for piece in row:
+                if piece is not None and piece.is_resting() and piece.id not in self._resting:
                     piece.state = PieceState.IDLE
 
     def consume_royal_capture(self) -> bool:
@@ -138,7 +154,10 @@ class RealTimeArbiter:
                 continue
 
             captured = self._board.move_piece(motion.source, motion.destination)
-            piece.state = PieceState.IDLE
+            piece.state = PieceState.LONG_REST
+            self._resting[piece.id] = (
+                self._current_time + piece_rules.get_long_rest_duration()
+            )
 
             promotion = piece_rules.get_promotion_kind(
                 piece.kind, piece.color, motion.destination, self._board.rows
