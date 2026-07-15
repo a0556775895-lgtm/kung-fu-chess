@@ -3,8 +3,9 @@ from .commands import ClickCommand, JumpCommand, Command
 
 
 class MouseCommandExtractor:
-    """אחראי רק על offset (מיקום הלוח בחלון). כל חישוב פיקסל->תא
-    מואצל ל-BoardMapper הקיים - לא משוכפל כאן."""
+    """Responsible only for the offset (board position within the window).
+    All pixel->cell computation is delegated to the existing BoardMapper —
+    not duplicated here."""
 
     def __init__(self, board_mapper, geometry):
         self._board_mapper = board_mapper

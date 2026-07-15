@@ -1,9 +1,18 @@
 from dataclasses import dataclass
 from model.position import Position
+from rules import piece_rules
 from .. import config
 from ..pieces.piece_loader import PieceLoader
 
-#TODO: לעדכן את הקריאות לשינוי ךUUPER את הצבע לפונקציה
+# Visual states whose real duration is dictated by the model's rest
+# cooldown (RealTimeArbiter), not by however many frames the clip has -
+# so the piece can't look ready to move before it actually is.
+_STATE_DURATION_MS = {
+    "long_rest": piece_rules.get_long_rest_duration(),
+    "short_rest": piece_rules.get_short_rest_duration(),
+}
+
+#TODO: update the calls to change color to UPPER via a function
 @dataclass
 class _TrackedPiece:
     visual_state: str = "idle"
@@ -14,9 +23,10 @@ class _TrackedPiece:
 
 
 class PieceAnimator:
-    """ממפה PieceState (מודל) + אירועי on_motion_started/on_jump_started
-    ל-state חזותי, frame נוכחי, ומיקום פיקסל (עם אינטרפולציה בתנועה).
-    מקבל dt_ms זהה למה שמוזן ל-game_engine.wait() - לא שעון אמיתי נפרד."""
+    """Maps PieceState (model) + on_motion_started/on_jump_started events
+    to a visual state, current frame, and pixel position (with interpolation
+    while moving). Receives the same dt_ms fed into game_engine.wait() —
+    not a separate real clock."""
 
     def __init__(self, animation_library, geometry):
         self._library = animation_library
@@ -42,17 +52,17 @@ class PieceAnimator:
         )
 
     def on_arrival(self, event) -> None:
-        pass  # הניקוי בפועל קורה ב-update(), לפי חברות ב-snapshot - לא כאן
+        pass  # actual cleanup happens in update(), based on snapshot membership — not here
 
     def on_game_over(self) -> None:
         pass
 
-    # --- עדכון פר-frame ---
+    # --- per-frame update ---
 
     def update(self, dt_ms: int, snapshot) -> None:
         live_ids = {p.id for p in snapshot.pieces}
         for stale_id in set(self._tracked) - live_ids:
-            del self._tracked[stale_id]     # כלי שנעלם בשקט (התנגשות/תפיסה) - מנוקה כאן
+            del self._tracked[stale_id]     # a piece that vanished silently (collision/capture) is cleaned up here
 
         for piece_snapshot in snapshot.pieces:
             tracked = self._tracked.setdefault(piece_snapshot.id, _TrackedPiece())
@@ -63,15 +73,20 @@ class PieceAnimator:
         clip = self._library.get_clip(piece_snapshot.kind,
                                        piece_snapshot.color.upper(),
                                        tracked.visual_state)
-        if clip.state_config.graphics.is_loop:
+        if tracked.motion_duration_ms is not None:
+            duration_ms = tracked.motion_duration_ms
+        elif clip.state_config.graphics.is_loop:
             return
-        duration_ms = 1000 * len(clip.frames) / clip.state_config.graphics.frames_per_sec
+        else:
+            duration_ms = 1000 * len(clip.frames) / clip.state_config.graphics.frames_per_sec
         if tracked.elapsed_in_state_ms >= duration_ms:
-            tracked.visual_state = clip.state_config.physics.next_state_when_finished
+            next_state = clip.state_config.physics.next_state_when_finished
+            tracked.visual_state = next_state
             tracked.elapsed_in_state_ms = 0
-            tracked.motion_source = tracked.motion_destination = tracked.motion_duration_ms = None
+            tracked.motion_source = tracked.motion_destination = None
+            tracked.motion_duration_ms = _STATE_DURATION_MS.get(next_state)
 
-    # --- שאילתות עבור PieceRenderer ---
+    # --- queries for PieceRenderer ---
 
     def get_visual_state(self, piece_snapshot) -> str:
         tracked = self._tracked.get(piece_snapshot.id)

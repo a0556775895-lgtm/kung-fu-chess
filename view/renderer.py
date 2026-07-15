@@ -1,4 +1,3 @@
-# רנדור טקסטואלי של מצב המשחק מתוך GameSnapshot.
 """Text rendering from GameSnapshot — never from live Board or Piece objects."""
 
 from dataclasses import dataclass

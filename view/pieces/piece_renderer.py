@@ -1,7 +1,7 @@
 class PieceRenderer:
-    """מצייר את כל הכלים החיים בכל frame. שואב frames מ-AnimationLibrary
-    (זיכרון בלבד), ומיקום/state נוכחיים מ-PieceAnimator - לא נוגע בדיסק
-    ולא מחשב זמן/state בעצמו."""
+    """Draws all live pieces every frame. Pulls frames from AnimationLibrary
+    (memory only), and current position/state from PieceAnimator — doesn't
+    touch disk and doesn't compute time/state itself."""
 
     def __init__(self, animation_library, piece_animator):
         self._library = animation_library

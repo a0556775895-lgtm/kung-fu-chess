@@ -37,7 +37,7 @@ class GameEngine:
         if self._game_state.game_over:
             return
         piece = self._board.get_piece_at(source)
-        if piece is None or piece.is_moving() or piece.state == PieceState.CAPTURED:
+        if piece is None or piece.is_moving() or piece.is_resting() or piece.state == PieceState.CAPTURED:
             return
         self._arbiter.start_jump(piece)
 
@@ -51,6 +51,8 @@ class GameEngine:
         piece = self._board.get_piece_at(source)
         if piece is not None and self._arbiter.has_active_motion(piece):
             return _MoveResult(False, "motion_in_progress")
+        if piece is not None and piece.is_resting():
+            return _MoveResult(False, "resting")
 
         validation = self._rule_engine.validate_move(self._board, source, destination)
         if not validation.is_valid:

@@ -4,22 +4,22 @@ from model.position import Position
 
 
 class GameObserver(Protocol):
-    """כל מי שרוצה 'לשמוע' אירועי משחק - נרשם דרך GameEngine.subscribe().
-    מחליף polling מכוער על snapshot בכל frame."""
+    """Anyone who wants to 'listen' to game events registers via
+    GameEngine.subscribe(). Replaces ugly polling of the snapshot every frame."""
 
     def on_arrival(self, event: ArrivalEvent) -> None:
-        """נקרא בכל מהלך שמגיע ליעד - גם בלי תפיסה."""
+        """Called on every move that reaches its destination — even without a capture."""
         ...
 
     def on_motion_started(self, piece, source: Position,
                            destination: Position, duration_ms: int) -> None:
-        """נקרא כשתנועה רגילה מתחילה - דרוש לאינטרפולציה חזותית."""
+        """Called when a regular motion starts — needed for visual interpolation."""
         ...
 
     def on_jump_started(self, piece, position: Position) -> None:
-        """נקרא כשקפיצה מתחילה. duration תמיד קבוע (config.JUMP_DURATION_MS)."""
+        """Called when a jump starts. Duration is always fixed (config.JUMP_DURATION_MS)."""
         ...
 
     def on_game_over(self) -> None:
-        """נקרא פעם אחת, כשמלך נתפס."""
+        """Called once, when a king is captured."""
         ...

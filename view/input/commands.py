@@ -16,9 +16,9 @@ Command = ClickCommand | JumpCommand
 
 
 class LocalCommandSender:
-    """המימוש היחיד כרגע: קורא ישירות ל-Controller/GameEngine המקומיים.
-    כשיגיע יום ומשחק מרובה-משתתפים יידרש, NetworkCommandSender יחליף
-    רק את המחלקה הזו - בלי לגעת ב-extractor או ב-display_manager."""
+    """The only implementation for now: calls the local Controller/GameEngine
+    directly. If multiplayer is ever needed, NetworkCommandSender will
+    replace only this class — without touching the extractor or display_manager."""
 
     def __init__(self, controller, game_engine):
         self._controller = controller
