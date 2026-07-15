@@ -22,6 +22,7 @@ class StateConfig:
 
     @staticmethod
     def load(config_path: Path) -> "StateConfig":
+        """Load a StateConfig (physics + graphics settings) from a config.json file."""
         with open(config_path, encoding="utf-8") as f:
             data = json.load(f)
         return StateConfig(

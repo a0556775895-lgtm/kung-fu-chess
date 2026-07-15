@@ -62,22 +62,27 @@ def get_promotion_kind(kind: str, color: PieceColor, destination: Position, boar
 
 
 def get_move_time(kind: str) -> int:
+    """Return the per-cell move duration in ms for a piece kind."""
     return MOVE_TIME[kind]
 
 
 def get_jump_duration(kind: str) -> int:
+    """Return the flat jump duration in ms for a piece kind."""
     return JUMP_DURATION[kind]
 
 
 def is_royal(kind: str) -> bool:
+    """Return whether kind is a royal piece (King) whose capture ends the game."""
     return kind in ROYAL_KINDS
 
 
 def get_long_rest_duration() -> int:
+    """Return the rest cooldown in ms after a normal move arrives."""
     return LONG_REST_DURATION_MS
 
 
 def get_short_rest_duration() -> int:
+    """Return the rest cooldown in ms after a jump lands."""
     return SHORT_REST_DURATION_MS
 
 
@@ -167,6 +172,7 @@ def get_pathcells(kind: str, color: PieceColor, source: Position, destination: P
 # --- Pawn -------------------------------------------------------------
 
 def _pawn_is_valid_move(color, source, destination, destination_piece, boardrows):
+    """Validate a pawn move as a forward move (empty destination) or a diagonal capture."""
     if destination_piece is None:
         return _pawn_is_valid_forward_move(color, source, destination, boardrows)
 
@@ -174,6 +180,7 @@ def _pawn_is_valid_move(color, source, destination, destination_piece, boardrows
 
 
 def _pawn_is_valid_forward_move(color, source, destination, boardrows):
+    """Validate a pawn's one-cell forward move, or two-cell move from its starting row."""
     direction = -1 if color == PieceColor.WHITE else 1
 
     if color == PieceColor.WHITE:
@@ -197,6 +204,7 @@ def _pawn_is_valid_forward_move(color, source, destination, boardrows):
 
 
 def _pawn_is_valid_capture(color, source, destination, destination_piece):
+    """Validate a pawn's diagonal capture: one step forward-diagonal onto an enemy piece."""
     direction = -1 if color == PieceColor.WHITE else 1
 
     return (
@@ -207,6 +215,7 @@ def _pawn_is_valid_capture(color, source, destination, destination_piece):
 
 
 def _pawn_pathcells(color, source, destination):
+    """Return the single intermediate cell for a pawn's two-square opening move, else none."""
     if abs(destination.row - source.row) == 2:
         direction = -1 if color == PieceColor.WHITE else 1
         return [Position(source.row + direction, source.col)]
@@ -217,6 +226,7 @@ def _pawn_pathcells(color, source, destination):
 # --- Queen --------------------------------------------------------------
 
 def _queen_is_valid_move(source, destination):
+    """Validate a queen move: straight or diagonal in any direction."""
     row_distance = abs(destination.row - source.row)
     col_distance = abs(destination.col - source.col)
 
@@ -228,6 +238,7 @@ def _queen_is_valid_move(source, destination):
 
 
 def _queen_pathcells(source, destination):
+    """Return the intermediate cells along a queen's straight or diagonal path."""
     path = []
 
     row_step = (destination.row > source.row) - (destination.row < source.row)
@@ -248,6 +259,7 @@ def _queen_pathcells(source, destination):
 # --- Rook ---------------------------------------------------------------
 
 def _rook_is_valid_move(source, destination):
+    """Validate a rook move: horizontal or vertical only."""
     row_distance = abs(destination.row - source.row)
     col_distance = abs(destination.col - source.col)
 
@@ -258,6 +270,7 @@ def _rook_is_valid_move(source, destination):
 
 
 def _rook_pathcells(source, destination):
+    """Return the intermediate cells along a rook's horizontal or vertical path."""
     path = []
 
     if source.row == destination.row:
@@ -275,6 +288,7 @@ def _rook_pathcells(source, destination):
 # --- Bishop ---------------------------------------------------------------
 
 def _bishop_is_valid_move(source, destination):
+    """Validate a bishop move: diagonal only."""
     row_distance = abs(destination.row - source.row)
     col_distance = abs(destination.col - source.col)
 
@@ -282,6 +296,7 @@ def _bishop_is_valid_move(source, destination):
 
 
 def _bishop_pathcells(source, destination):
+    """Return the intermediate cells along a bishop's diagonal path."""
     path = []
 
     row_step = 1 if destination.row > source.row else -1
@@ -301,6 +316,7 @@ def _bishop_pathcells(source, destination):
 # --- Knight -----------------------------------------------------------------
 
 def _knight_is_valid_move(source, destination):
+    """Validate a knight move: an L-shape (2+1 or 1+2 cells)."""
     row_distance = abs(destination.row - source.row)
     col_distance = abs(destination.col - source.col)
 
@@ -313,6 +329,7 @@ def _knight_is_valid_move(source, destination):
 # --- King ----------------------------------------------------------------
 
 def _king_is_valid_move(source, destination):
+    """Validate a king move: exactly one cell in any direction."""
     row_distance = abs(destination.row - source.row)
     col_distance = abs(destination.col - source.col)
 

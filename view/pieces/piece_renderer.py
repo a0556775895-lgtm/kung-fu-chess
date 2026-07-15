@@ -4,14 +4,17 @@ class PieceRenderer:
     touch disk and doesn't compute time/state itself."""
 
     def __init__(self, animation_library, piece_animator):
+        """Store the animation library (frames) and piece animator (state/position) used for drawing."""
         self._library = animation_library
         self._animator = piece_animator
 
     def render(self, canvas, snapshot) -> None:
+        """Draw every live piece in snapshot onto canvas."""
         for piece_snapshot in snapshot.pieces:
             self._draw_piece(canvas, piece_snapshot)
 
     def _draw_piece(self, canvas, piece_snapshot) -> None:
+        """Draw a single piece's current animation frame at its current pixel position on canvas."""
         color = piece_snapshot.color.upper()
         visual_state = self._animator.get_visual_state(piece_snapshot)
         frame_index = self._animator.get_frame_index(piece_snapshot)

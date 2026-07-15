@@ -41,7 +41,8 @@ class ArrivalEvents:
 
 class RealTimeArbiter:
     def __init__(self, board):
-        self._board = board
+        """Set up empty motion/airborne/resting tracking and a zeroed simulated clock for board."""
+        self._board = board #TODO replace it!! real time should not know the board
         # dict preserves insertion order -- this IS the "first
         # scheduled wins" collision rule; no separate timestamp
         # bookkeeping needed for it.
@@ -106,11 +107,13 @@ class RealTimeArbiter:
                     piece.state = PieceState.IDLE
 
     def consume_royal_capture(self) -> bool:
+        """Return whether a king was captured since the last call, resetting the flag."""
         captured = self._royal_captured
         self._royal_captured = False
         return captured
 
     def _resolve_arrivals(self):
+        """Resolve all motions due this tick (collisions, airborne captures, landings, promotions) and return their ArrivalEvents."""
         # Motions due this tick, in scheduling order, with ties broken
         # by scheduling order too (stable sort over an insertion-
         # ordered dict keeps that guarantee).

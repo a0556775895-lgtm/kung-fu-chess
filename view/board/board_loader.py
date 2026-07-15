@@ -10,12 +10,14 @@ class BoardLoader:
     frame."""
 
     def __init__(self, geometry, image_path=config.BOARD_IMAGE_PATH):
+        """Store geometry and image path; no board image is loaded yet."""
         self._geometry = geometry
         self._image_path = image_path
         self._clean_board = None
         # No call to load() here — construction is cheap, loading is explicit
 
     def load(self) -> None:
+        """Load and cache the board image sized to the current geometry."""
         board = Img()
         board.read(
             str(self._image_path),

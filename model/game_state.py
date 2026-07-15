@@ -9,4 +9,5 @@ class GameState:
     game_over: bool = False
 
     def end_game(self) -> None:
+        """Mark the game as over."""
         self.game_over = True

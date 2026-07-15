@@ -17,6 +17,7 @@ class AnimationLibrary:
                  config_loader: AnimationConfigLoader = None,
                  kinds=config.PIECE_KINDS, colors=config.PIECE_COLORS,
                  states=config.ANIMATION_STATES):
+        """Wire up geometry, piece/config loaders, and the kinds/colors/states to build clips for; starts with no clips loaded."""
         self._geometry = geometry
         self._kinds = kinds
         self._colors = colors
@@ -28,6 +29,7 @@ class AnimationLibrary:
         self._clips: dict[tuple[str, str, str], AnimationClip] = {}
 
     def load(self) -> None:
+        """Load state configs and build every (kind, color, state) animation clip's frames."""
         state_configs = self._config_loader.load_all()
         cell_size = (self._geometry.cell_w, self._geometry.cell_h)
 
@@ -41,7 +43,9 @@ class AnimationLibrary:
             self._clips[(kind, color, state)] = AnimationClip(frames, state_config)
 
     def reload(self) -> None:
+        """Reload all animation clips from disk."""
         self.load()
 
     def get_clip(self, kind: str, color: str, state: str) -> AnimationClip:
+        """Return the loaded AnimationClip for the given piece kind, color, and state."""
         return self._clips[(kind, color, state)]

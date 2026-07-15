@@ -9,6 +9,7 @@ class Board:
     """
 
     def __init__(self, grid, rows, cols):
+        """Store the piece grid and its dimensions."""
         self._grid = grid
         self.rows = rows
         self.cols = cols

@@ -14,6 +14,7 @@ class Controller:
     commands."""
 
     def __init__(self, board, game_engine, board_mapper):
+        """Wire up the board, engine, and pixel mapper, with no cell selected initially."""
         self._board = board
         self._game_engine = game_engine
         self._board_mapper = board_mapper
@@ -21,6 +22,7 @@ class Controller:
 
     @property
     def selected_position(self):
+        """The currently selected board position, or None if nothing is selected."""
         return self._selected_position
 
     def handle_pixel_click(self, x, y):
@@ -40,17 +42,20 @@ class Controller:
         self.handle_click(position)
 
     def handle_click(self, position: Position):
+        """Route a click on position to selecting a piece or acting on the current selection."""
         if self._selected_position is None:
             self._try_select_piece(position)
         else:
             self._handle_selected_click(position)
 
     def _try_select_piece(self, position: Position):
+        """Select position if it holds a piece; ignore clicks on empty cells."""
         # Ignore first clicks on empty cells (section 11).
         if self._board.get_piece_at(position) is not None:
             self._selected_position = position
 
     def _handle_selected_click(self, position: Position):
+        """With a piece already selected, switch selection to another friendly piece or request a move to position."""
         source = self._selected_position
         clicked_piece = self._board.get_piece_at(position)
         selected_piece = self._board.get_piece_at(source)

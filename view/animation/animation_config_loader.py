@@ -12,15 +12,18 @@ class AnimationConfigLoader:
     def __init__(self, assets_root: Path = config.ASSETS_ROOT,
                  kinds=config.PIECE_KINDS, colors=config.PIECE_COLORS,
                  states=config.ANIMATION_STATES):
+        """Store the assets root and the sets of piece kinds/colors/states to load configs for."""
         self._assets_root = assets_root
         self._kinds = kinds
         self._colors = colors
         self._states = states
 
     def config_path(self, kind: str, color: str, state: str) -> Path:
+        """Return the config.json path for a given piece kind, color, and animation state."""
         return self._assets_root / f"{kind}{color}" / "states" / state / "config.json"
 
     def load_all(self) -> dict[tuple[str, str, str], StateConfig]:
+        """Load every (kind, color, state) config.json into a dict and validate their state transitions."""
         configs = {}
         for kind in self._kinds:
             for color in self._colors:
@@ -31,6 +34,7 @@ class AnimationConfigLoader:
         return configs
 
     def _validate_transitions(self, configs: dict) -> None:
+        """Raise ValueError if any config's next_state_when_finished points to a non-existent state."""
         valid_states = set(self._states)
         for (kind, color, state), state_config in configs.items():
             next_state = state_config.physics.next_state_when_finished

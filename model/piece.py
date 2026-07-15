@@ -12,6 +12,7 @@ class PieceColor(Enum):
     BLACK = "b"
 
     def __str__(self) -> str:
+        """Return the single-letter code for the color ("w" or "b")."""
         return self.value
 
 
@@ -39,13 +40,17 @@ class Piece:
     state: PieceState = PieceState.IDLE
 
     def is_moving(self) -> bool:
+        """Whether the piece is currently mid-move."""
         return self.state is PieceState.MOVING
 
     def is_airborne(self) -> bool:
+        """Whether the piece is currently mid-jump (immune to normal capture)."""
         return self.state is PieceState.AIRBORNE
 
     def is_resting(self) -> bool:
+        """Whether the piece is in a post-move or post-jump rest state and cannot act."""
         return self.state in (PieceState.LONG_REST, PieceState.SHORT_REST)
 
     def __str__(self) -> str:
+        """Return the piece's short code, e.g. "wP" or "bK"."""
         return f"{self.color}{self.kind}"

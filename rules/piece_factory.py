@@ -16,6 +16,7 @@ class PieceFactory:
 
     @classmethod
     def reset_counter(cls):
+        """Reset the piece id counter to 0, so a new board's ids start from "piece_0"."""
         cls._next_id = 0
 
     @classmethod

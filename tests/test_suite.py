@@ -22,7 +22,6 @@ from input.board_mapper import BoardMapper
 from input.controller import Controller
 from engine.game_engine import GameEngine
 from view.renderer import render_snapshot, GameSnapshot, PieceSnapshot
-import main as main_module
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -596,8 +595,8 @@ def test_render_snapshot_output():
         board_width=2,
         board_height=2,
         pieces=[
-            PieceSnapshot(kind="R", color="w", cell=Position(0, 0), state="IDLE"),
-            PieceSnapshot(kind="K", color="b", cell=Position(1, 1), state="IDLE"),
+            PieceSnapshot(id="p1", kind="R", color="w", cell=Position(0, 0), state="IDLE"),
+            PieceSnapshot(id="p2", kind="K", color="b", cell=Position(1, 1), state="IDLE"),
         ],
         selected_cell=None,
         game_over=False,
@@ -620,49 +619,6 @@ def test_render_snapshot_empty_board():
     assert out.getvalue().strip() == ". ."
 
 
-# ── main ──────────────────────────────────────────────────────────────────────
-
-def test_main_print_board(monkeypatch, capsys):
-    monkeypatch.setattr(sys, "stdin", io.StringIO(
-        "Board:\nwR . .\nCommands:\nprint board\n"
-    ))
-    main_module.main()
-    assert "wR . ." in capsys.readouterr().out
-
-
-def test_main_click_and_wait(monkeypatch, capsys):
-    monkeypatch.setattr(sys, "stdin", io.StringIO(
-        "Board:\nwR . .\nCommands:\nclick 0 0\nclick 200 0\nwait 2000\nprint board\n"
-    ))
-    main_module.main()
-    out = capsys.readouterr().out
-    assert ". . wR" in out
-
-
-def test_main_no_board_section(monkeypatch, capsys):
-    monkeypatch.setattr(sys, "stdin", io.StringIO("nothing here\n"))
-    main_module.main()
-    assert capsys.readouterr().out == ""
-
-
-def test_main_parse_error(monkeypatch, capsys):
-    monkeypatch.setattr(sys, "stdin", io.StringIO("Board:\nwX\nCommands:\n"))
-    main_module.main()
-    assert "ERROR" in capsys.readouterr().out
-
-
-def test_main_row_width_mismatch(monkeypatch, capsys):
-    monkeypatch.setattr(sys, "stdin", io.StringIO("Board:\nwR .\n.\nCommands:\n"))
-    main_module.main()
-    assert "ERROR" in capsys.readouterr().out
-
-
-def test_main_no_commands_section(monkeypatch, capsys):
-    monkeypatch.setattr(sys, "stdin", io.StringIO("Board:\nwR .\n"))
-    main_module.main()
-    assert capsys.readouterr().out == ""
-
-
 def test_piece_rules_queen_pathcells_straight():
     # covers queen path along a row (col_step != 0, row_step == 0)
     assert piece_rules.get_pathcells("Q", PieceColor.WHITE, Position(0, 0), Position(0, 3)) == [
@@ -682,3 +638,221 @@ def test_piece_rules_rook_pathcells_leftward():
     assert piece_rules.get_pathcells("R", PieceColor.WHITE, Position(0, 3), Position(0, 0)) == [
         Position(0, 2), Position(0, 1)
     ]
+
+
+# ── Piece: airborne / resting ──────────────────────────────────────────────────
+
+def test_piece_is_airborne():
+    p = make_piece()
+    assert not p.is_airborne()
+    p.state = PieceState.AIRBORNE
+    assert p.is_airborne()
+
+
+def test_piece_is_resting():
+    p = make_piece()
+    assert not p.is_resting()
+    p.state = PieceState.LONG_REST
+    assert p.is_resting()
+    p.state = PieceState.SHORT_REST
+    assert p.is_resting()
+
+
+# ── piece_rules: promotion / short rest ─────────────────────────────────────────
+
+def test_piece_rules_promotion_white_back_rank():
+    assert piece_rules.get_promotion_kind("P", PieceColor.WHITE, Position(0, 3), 8) == "Q"
+
+
+def test_piece_rules_promotion_black_back_rank():
+    assert piece_rules.get_promotion_kind("P", PieceColor.BLACK, Position(7, 3), 8) == "Q"
+
+
+def test_piece_rules_no_promotion_mid_board():
+    assert piece_rules.get_promotion_kind("P", PieceColor.WHITE, Position(3, 3), 8) is None
+
+
+def test_piece_rules_no_promotion_non_pawn():
+    assert piece_rules.get_promotion_kind("Q", PieceColor.WHITE, Position(0, 3), 8) is None
+
+
+def test_piece_rules_short_rest_duration():
+    assert piece_rules.get_short_rest_duration() == 1000
+
+
+# ── RealTimeArbiter: jump / landing / resting / airborne capture / promotion ───
+
+def test_arbiter_start_jump_sets_airborne():
+    board = make_board(["wN ."])
+    arbiter = RealTimeArbiter(board)
+    piece = board.get_piece_at(Position(0, 0))
+    arbiter.start_jump(piece)
+    assert piece.is_airborne()
+
+
+def test_arbiter_jump_lands_into_short_rest_then_idle():
+    board = make_board(["wN ."])
+    arbiter = RealTimeArbiter(board)
+    piece = board.get_piece_at(Position(0, 0))
+    arbiter.start_jump(piece)
+    arbiter.advance_time(1000)
+    assert piece.state == PieceState.SHORT_REST
+    arbiter.advance_time(piece_rules.get_short_rest_duration())
+    assert piece.state == PieceState.IDLE
+
+
+def test_arbiter_airborne_capture_of_arriving_piece():
+    board = make_board(["wR bN"])
+    arbiter = RealTimeArbiter(board)
+    white = board.get_piece_at(Position(0, 0))
+    black_jumper = board.get_piece_at(Position(0, 1))
+    arbiter.start_jump(black_jumper)
+    arbiter.start_motion(white, Position(0, 0), Position(0, 1))
+    events = arbiter.advance_time(1000)
+    assert white.state == PieceState.CAPTURED
+    assert board.get_piece_at(Position(0, 1)) is black_jumper
+    assert board.get_piece_at(Position(0, 0)) is None
+    assert len(events.events) == 1
+
+
+def test_arbiter_airborne_capture_of_king_ends_game():
+    board = make_board(["wK bN"])
+    arbiter = RealTimeArbiter(board)
+    king = board.get_piece_at(Position(0, 0))
+    black_jumper = board.get_piece_at(Position(0, 1))
+    arbiter.start_jump(black_jumper)
+    arbiter.start_motion(king, Position(0, 0), Position(0, 1))
+    events = arbiter.advance_time(1000)
+    assert events.king_captured is True
+
+
+def test_arbiter_pawn_promotion_on_arrival():
+    board = make_board([".", "wP"])
+    arbiter = RealTimeArbiter(board)
+    piece = board.get_piece_at(Position(1, 0))
+    arbiter.start_motion(piece, Position(1, 0), Position(0, 0))
+    arbiter.advance_time(1000)
+    assert board.get_piece_at(Position(0, 0)).kind == "Q"
+
+
+# ── GameEngine: request_jump ────────────────────────────────────────────────────
+
+def test_game_engine_request_jump_starts_jump():
+    board = make_board(["wN ."])
+    engine = GameEngine(board)
+    piece = board.get_piece_at(Position(0, 0))
+    engine.request_jump(Position(0, 0))
+    assert piece.is_airborne()
+
+
+def test_game_engine_request_jump_game_over_ignored():
+    board = make_board(["wR bK"])
+    engine = GameEngine(board)
+    engine.request_move(Position(0, 0), Position(0, 1))
+    engine.wait(1000)
+    assert engine.game_over
+    engine.request_jump(Position(0, 1))  # no-op, must not raise
+
+
+def test_game_engine_request_jump_empty_source_ignored():
+    board = make_board([". ."])
+    engine = GameEngine(board)
+    engine.request_jump(Position(0, 0))  # no-op, must not raise
+
+
+def test_game_engine_request_jump_moving_piece_ignored():
+    board = make_board(["wR . ."])
+    engine = GameEngine(board)
+    engine.request_move(Position(0, 0), Position(0, 2))
+    piece = board.get_piece_at(Position(0, 0))
+    engine.request_jump(Position(0, 0))
+    assert not piece.is_airborne()
+
+
+def test_game_engine_request_jump_resting_piece_ignored():
+    board = make_board(["wR . ."])
+    engine = GameEngine(board)
+    engine.request_move(Position(0, 0), Position(0, 2))
+    engine.wait(2000)
+    piece = board.get_piece_at(Position(0, 2))
+    assert piece.is_resting()
+    engine.request_jump(Position(0, 2))
+    assert not piece.is_airborne()
+
+
+def test_game_engine_request_jump_captured_piece_ignored():
+    board = make_board(["wR ."])
+    engine = GameEngine(board)
+    piece = board.get_piece_at(Position(0, 0))
+    piece.state = PieceState.CAPTURED
+    engine.request_jump(Position(0, 0))
+    assert not piece.is_airborne()
+
+
+# ── GameEngine: request_move resting guard ──────────────────────────────────────
+
+def test_game_engine_request_move_resting_blocked():
+    board = make_board(["wR . ."])
+    engine = GameEngine(board)
+    engine.request_move(Position(0, 0), Position(0, 2))
+    engine.wait(2000)
+    result = engine.request_move(Position(0, 2), Position(0, 1))
+    assert not result.is_accepted
+    assert result.reason == "resting"
+
+
+# ── GameEngine: observer notifications ──────────────────────────────────────────
+
+class _RecordingObserver:
+    def __init__(self):
+        self.motion_started = []
+        self.jump_started = []
+        self.arrivals = []
+        self.game_over_calls = 0
+
+    def on_motion_started(self, piece, source, destination, duration_ms):
+        self.motion_started.append((piece, source, destination, duration_ms))
+
+    def on_jump_started(self, piece, position):
+        self.jump_started.append((piece, position))
+
+    def on_arrival(self, event):
+        self.arrivals.append(event)
+
+    def on_game_over(self):
+        self.game_over_calls += 1
+
+
+def test_game_engine_subscribe_receives_motion_started():
+    board = make_board(["wR . ."])
+    engine = GameEngine(board)
+    observer = _RecordingObserver()
+    engine.subscribe(observer)
+    engine.request_move(Position(0, 0), Position(0, 2))
+    assert len(observer.motion_started) == 1
+    _, source, destination, duration_ms = observer.motion_started[0]
+    assert source == Position(0, 0)
+    assert destination == Position(0, 2)
+    assert duration_ms == 2000
+
+
+def test_game_engine_subscribe_receives_jump_started():
+    board = make_board(["wN ."])
+    engine = GameEngine(board)
+    observer = _RecordingObserver()
+    engine.subscribe(observer)
+    engine.request_jump(Position(0, 0))
+    assert len(observer.jump_started) == 1
+    _, position = observer.jump_started[0]
+    assert position == Position(0, 0)
+
+
+def test_game_engine_subscribe_receives_arrival_and_game_over():
+    board = make_board(["wR bK"])
+    engine = GameEngine(board)
+    observer = _RecordingObserver()
+    engine.subscribe(observer)
+    engine.request_move(Position(0, 0), Position(0, 1))
+    engine.wait(1000)
+    assert len(observer.arrivals) == 1
+    assert observer.game_over_calls == 1

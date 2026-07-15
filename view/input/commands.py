@@ -21,10 +21,12 @@ class LocalCommandSender:
     replace only this class — without touching the extractor or display_manager."""
 
     def __init__(self, controller, game_engine):
+        """Store the controller and game engine to dispatch commands to."""
         self._controller = controller
         self._game_engine = game_engine
 
     def send(self, command: Command) -> None:
+        """Route a ClickCommand to the controller or a JumpCommand to the game engine."""
         match command:
             case ClickCommand(position=position):
                 self._controller.handle_click(position)

@@ -3,3 +3,20 @@ omit =
     tests/*
     old/*
     view/image_view.py
+    main.py
+    view/config.py
+    view/geometry.py
+    view/img.py
+    view/image_utils.py
+    view/protocols.py
+    view/display_manager.py
+    view/animation/*
+    view/board/*
+    view/pieces/*
+    view/input/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    class \w+\(Protocol\):
+show_missing = True

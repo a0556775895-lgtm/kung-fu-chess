@@ -30,6 +30,7 @@ WINDOW_NAME = "KungFu Chess"
 
 class DisplayManager:
     def __init__(self):
+        """Build the board, engine, geometry, renderers, and input pipeline, and open the game window."""
         self._board = BoardParser.parse(STANDARD_OPENING)
         self._game_engine = GameEngine(self._board)
 
@@ -57,6 +58,7 @@ class DisplayManager:
         cv2.setMouseCallback(WINDOW_NAME, self._on_mouse)
 
     def _on_mouse(self, event, x, y, flags, param):
+        """OpenCV mouse callback: translate left/right clicks into a command and dispatch it."""
         command = None
         if event == cv2.EVENT_LBUTTONDOWN:
             command = self._extractor.extract_left_click(x, y)
@@ -67,18 +69,21 @@ class DisplayManager:
             self._command_sender.send(command)
 
     def update(self, dt_ms: int) -> None:
+        """Advance the game and animations by dt_ms and cache the resulting snapshot."""
         self._game_engine.wait(dt_ms)
         snapshot = self._game_engine.snapshot(self._controller.selected_position)
         self._piece_animator.update(dt_ms, snapshot)
         self._last_snapshot = snapshot
 
     def render(self):
+        """Draw the current snapshot onto a fresh board canvas and return it."""
         canvas = self._board_loader.fresh_canvas()
         for renderer in self._renderers:
             renderer.render(canvas, self._last_snapshot)
         return canvas
 
     def run(self):
+        """Run the main loop: tick time, update state, render, and display the window until Esc is pressed."""
         last_time = cv2.getTickCount()
         tick_freq = cv2.getTickFrequency()
 

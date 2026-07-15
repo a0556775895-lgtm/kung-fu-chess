@@ -48,6 +48,7 @@ class RuleEngine:
         source: Position,
         destination: Position,
     ) -> MoveValidation:
+        """Check that a move from source to destination is legal (bounds, occupancy, piece pattern, clear path)."""
 
         if not board.is_inside_board(source) or not board.is_inside_board(destination):
             return MoveValidation(is_valid=False, reason="outside_board")

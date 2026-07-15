@@ -22,6 +22,7 @@ from view.renderer import render_snapshot, GameSnapshot, PieceSnapshot
 
 class GameEngine:
     def __init__(self, board: Board):
+        """Set up game state, the motion arbiter, and the rule engine for the given board."""
         self._board = board
         self._game_state = GameState()
         self._arbiter = RealTimeArbiter(board)
@@ -34,6 +35,7 @@ class GameEngine:
         self._observers.append(observer)
 
     def request_jump(self, source):
+        """Start a jump for the piece at source, unless the game is over or the piece is already moving/resting/captured."""
         if self._game_state.game_over:
             return
         piece = self._board.get_piece_at(source)
@@ -45,6 +47,7 @@ class GameEngine:
             observer.on_jump_started(piece, source)
 
     def request_move(self, source, destination):
+        """Validate and, if legal, start a move from source to destination; returns a _MoveResult indicating acceptance and reason."""
         if self._game_state.game_over:
             return _MoveResult(False, "game_over")
 
@@ -67,6 +70,7 @@ class GameEngine:
         return _MoveResult(True, "ok")
 
     def wait(self, milliseconds):
+        """Advance simulated time, notify observers of any arrivals, and end the game if a king was captured."""
         arrival_events = self._arbiter.advance_time(milliseconds)
 
         for event in arrival_events.events:
@@ -79,6 +83,7 @@ class GameEngine:
                 observer.on_game_over()
 
     def snapshot(self, selected_cell=None):
+        """Build a read-only GameSnapshot of the current board and game state for rendering."""
         pieces = [
             PieceSnapshot(
                 id=p.id,
@@ -101,10 +106,12 @@ class GameEngine:
 
     @property
     def game_over(self):
+        """Whether the game has ended."""
         return self._game_state.game_over
 
 
 class _MoveResult:
     def __init__(self, is_accepted, reason):
+        """Store the outcome of a requested move: whether it was accepted and why/why not."""
         self.is_accepted = is_accepted
         self.reason = reason

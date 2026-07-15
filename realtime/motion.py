@@ -9,6 +9,7 @@ is handled by RealTimeArbiter, not here.
 
 class Motion:
     def __init__(self, piece, source, destination, start_time, arrival_time):
+        """Store the piece and the timing/endpoints of its in-flight move."""
         self.piece = piece
         self.source = source
         self.destination = destination

@@ -9,14 +9,17 @@ class PieceLoader:
     e.g. 'PW')."""
 
     def __init__(self, assets_root: Path = config.ASSETS_ROOT):
+        """Store the root assets folder sprites are loaded from."""
         self._assets_root = assets_root
 
     def sprite_path(self, kind: str, color: str, state: str, frame: int) -> Path:
+        """Return the file path for a specific piece kind/color/state/frame sprite."""
         folder = f"{kind}{color}"
         return self._assets_root / folder / "states" / state / "sprites" / f"{frame}.png"
 
     def load_frame(self, kind: str, color: str, state: str, frame: int,
                    cell_size: tuple[int, int]) -> Img:
+        """Load a single sprite frame from disk, resized to fit within cell_size."""
         img = Img()
         img.read(str(self.sprite_path(kind, color, state, frame)),
                   size=cell_size, keep_aspect=True)

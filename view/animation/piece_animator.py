@@ -29,6 +29,7 @@ class PieceAnimator:
     not a separate real clock."""
 
     def __init__(self, animation_library, geometry):
+        """Store the animation clip library and board geometry, and start with no tracked pieces."""
         self._library = animation_library
         self._geometry = geometry
         self._tracked: dict[str, _TrackedPiece] = {}
@@ -36,6 +37,7 @@ class PieceAnimator:
     # --- GameObserver callbacks ---
 
     def on_motion_started(self, piece, source, destination, duration_ms) -> None:
+        """Start tracking piece as visually moving from source to destination over duration_ms."""
         self._tracked[piece.id] = _TrackedPiece(
             visual_state="move",
             motion_source=source,
@@ -44,6 +46,7 @@ class PieceAnimator:
         )
 
     def on_jump_started(self, piece, position) -> None:
+        """Start tracking piece as visually jumping in place at position."""
         self._tracked[piece.id] = _TrackedPiece(
             visual_state="jump",
             motion_source=position,
@@ -52,14 +55,17 @@ class PieceAnimator:
         )
 
     def on_arrival(self, event) -> None:
+        """No-op: arrival cleanup is instead handled in update() via snapshot membership."""
         pass  # actual cleanup happens in update(), based on snapshot membership — not here
 
     def on_game_over(self) -> None:
+        """No-op handler for the game-over event."""
         pass
 
     # --- per-frame update ---
 
     def update(self, dt_ms: int, snapshot) -> None:
+        """Drop tracking for pieces no longer in the snapshot, then advance each remaining piece's animation clock by dt_ms."""
         live_ids = {p.id for p in snapshot.pieces}
         for stale_id in set(self._tracked) - live_ids:
             del self._tracked[stale_id]     # a piece that vanished silently (collision/capture) is cleaned up here
@@ -70,6 +76,7 @@ class PieceAnimator:
             self._advance_if_finished(piece_snapshot, tracked)
 
     def _advance_if_finished(self, piece_snapshot, tracked) -> None:
+        """Transition a piece to its next visual state once its current state's duration has elapsed."""
         clip = self._library.get_clip(piece_snapshot.kind,
                                        piece_snapshot.color.upper(),
                                        tracked.visual_state)
@@ -89,10 +96,12 @@ class PieceAnimator:
     # --- queries for PieceRenderer ---
 
     def get_visual_state(self, piece_snapshot) -> str:
+        """Return the piece's current visual state name, defaulting to "idle" if untracked."""
         tracked = self._tracked.get(piece_snapshot.id)
         return tracked.visual_state if tracked else "idle"
 
     def get_frame_index(self, piece_snapshot) -> int:
+        """Return the clip frame index to display for the piece, looping or clamping as the clip requires."""
         tracked = self._tracked.get(piece_snapshot.id)
         state = tracked.visual_state if tracked else "idle"
         elapsed = tracked.elapsed_in_state_ms if tracked else 0
@@ -103,6 +112,7 @@ class PieceAnimator:
         return min(raw_index, len(clip.frames) - 1)
 
     def get_pixel_position(self, piece_snapshot) -> tuple[float, float]:
+        """Return the piece's current on-screen pixel position, interpolating between cells while it's moving."""
         tracked = self._tracked.get(piece_snapshot.id)
         if tracked is None or tracked.visual_state != "move":
             return self._geometry.cell_to_pixel(piece_snapshot.cell)

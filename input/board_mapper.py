@@ -9,11 +9,13 @@ class BoardMapper:
     """Translate pixel coordinates to board cells and check bounds."""
 
     def __init__(self, rows, cols, cell_size=100):
+        """Store board dimensions and pixel size of a cell."""
         self.rows = rows
         self.cols = cols
         self.cell_size = cell_size
 
     def update_dimensions(self, rows, cols):
+        """Update the tracked board dimensions (e.g. after a window resize)."""
         self.rows = rows
         self.cols = cols
 
@@ -29,4 +31,5 @@ class BoardMapper:
         return Position(row, col)
 
     def is_inside_board(self, position: Position) -> bool:
+        """Return whether position falls within the board's row/col bounds."""
         return 0 <= position.row < self.rows and 0 <= position.col < self.cols
