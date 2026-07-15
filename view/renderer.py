@@ -8,6 +8,7 @@ from boardio.board_printer import print_board
 
 @dataclass
 class PieceSnapshot:
+    id: str
     kind: str
     color: str
     cell: object
