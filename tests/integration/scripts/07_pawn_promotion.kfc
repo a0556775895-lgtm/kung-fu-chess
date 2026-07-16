@@ -1,0 +1,8 @@
+Board:
+.
+wP
+Commands:
+click 0 100
+click 0 0
+wait 1000
+print board

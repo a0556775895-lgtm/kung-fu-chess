@@ -1,0 +1,8 @@
+Board:
+wR bN
+Commands:
+jump 100 0
+click 0 0
+click 100 0
+wait 1000
+print board
