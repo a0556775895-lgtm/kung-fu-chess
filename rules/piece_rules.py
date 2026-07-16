@@ -29,12 +29,12 @@ MOVE_TIME = {
 }
 
 JUMP_DURATION = {
-    "P": 1000,
-    "Q": 1000,
-    "R": 1000,
-    "B": 1000,
-    "K": 1000,
-    "N": 3000,
+    "P": 10000,
+    "Q": 10000,
+    "R": 10000,
+    "B": 10000,
+    "K": 10000,
+    "N": 10000,
 }
 
 # Kinds whose movement is a flat jump rather than steps along a line --
@@ -46,6 +46,11 @@ JUMP_DURATION = {
 JUMP_kindS = {"N"}
 
 ROYAL_KINDS = {"K"}
+
+# How long a piece stays AIRBORNE after start_jump(), for every kind alike
+# (the jump *command* -- not to be confused with JUMP_kindS/get_jump_duration()
+# above, which is the Knight's flat L-move timing).
+AIRBORNE_DURATION_MS = 5000
 
 # Cooldown after arrival: a piece can't start a new move/jump while resting.
 # LONG_REST follows a normal move's arrival; SHORT_REST follows a jump landing.
@@ -84,6 +89,11 @@ def get_long_rest_duration() -> int:
 def get_short_rest_duration() -> int:
     """Return the rest cooldown in ms after a jump lands."""
     return SHORT_REST_DURATION_MS
+
+
+def get_airborne_duration() -> int:
+    """Return how long a piece stays AIRBORNE after start_jump(), in ms."""
+    return AIRBORNE_DURATION_MS
 
 
 def get_arrival_duration(kind: str, source: Position, destination: Position) -> int:

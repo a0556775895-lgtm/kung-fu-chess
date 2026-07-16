@@ -695,7 +695,7 @@ def test_arbiter_jump_lands_into_short_rest_then_idle():
     arbiter = RealTimeArbiter(board)
     piece = board.get_piece_at(Position(0, 0))
     arbiter.start_jump(piece)
-    arbiter.advance_time(1000)
+    arbiter.advance_time(piece_rules.get_airborne_duration())
     assert piece.state == PieceState.SHORT_REST
     arbiter.advance_time(piece_rules.get_short_rest_duration())
     assert piece.state == PieceState.IDLE

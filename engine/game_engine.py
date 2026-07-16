@@ -11,6 +11,8 @@ Does NOT contain piece-specific movement logic, rendering, input
 parsing, or pixel mapping.
 """
 
+import logging
+
 from model.board import Board
 from model.game_state import GameState
 from model.piece import PieceState
@@ -18,6 +20,8 @@ from realtime.real_time_arbiter import RealTimeArbiter
 from rules.rule_engine import RuleEngine
 from rules import piece_rules
 from view.renderer import render_snapshot, GameSnapshot, PieceSnapshot
+
+logger = logging.getLogger(__name__)
 
 
 class GameEngine:
@@ -37,11 +41,18 @@ class GameEngine:
     def request_jump(self, source):
         """Start a jump for the piece at source, unless the game is over or the piece is already moving/resting/captured."""
         if self._game_state.game_over:
+            logger.info("jump request at %s rejected: game_over", source)
             return
         piece = self._board.get_piece_at(source)
         if piece is None or piece.is_moving() or piece.is_resting() or piece.state == PieceState.CAPTURED:
+            logger.info(
+                "jump request at %s rejected: %s",
+                source,
+                "empty_source" if piece is None else piece.state.name,
+            )
             return
         self._arbiter.start_jump(piece)
+        logger.info("jump started: %s (%s) at %s", piece.id, piece.kind, source)
 
         for observer in self._observers:
             observer.on_jump_started(piece, source)
@@ -49,21 +60,35 @@ class GameEngine:
     def request_move(self, source, destination):
         """Validate and, if legal, start a move from source to destination; returns a _MoveResult indicating acceptance and reason."""
         if self._game_state.game_over:
+            logger.info("move request %s -> %s rejected: game_over", source, destination)
             return _MoveResult(False, "game_over")
 
         piece = self._board.get_piece_at(source)
         if piece is not None and self._arbiter.has_active_motion(piece):
+            logger.info(
+                "move request for %s (%s) %s -> %s rejected: motion_in_progress",
+                piece.id, piece.kind, source, destination,
+            )
             return _MoveResult(False, "motion_in_progress")
         if piece is not None and piece.is_resting():
+            logger.info(
+                "move request for %s (%s) %s -> %s rejected: resting (%s)",
+                piece.id, piece.kind, source, destination, piece.state.name,
+            )
             return _MoveResult(False, "resting")
 
         validation = self._rule_engine.validate_move(self._board, source, destination)
         if not validation.is_valid:
+            logger.info("move request %s -> %s rejected: %s", source, destination, validation.reason)
             return _MoveResult(False, validation.reason)
 
         self._arbiter.start_motion(piece, source, destination)
 
         duration = piece_rules.get_arrival_duration(piece.kind, source, destination)
+        logger.info(
+            "move started: %s (%s) %s -> %s, duration=%dms",
+            piece.id, piece.kind, source, destination, duration,
+        )
         for observer in self._observers:
             observer.on_motion_started(piece, source, destination, duration)
 
@@ -74,10 +99,16 @@ class GameEngine:
         arrival_events = self._arbiter.advance_time(milliseconds)
 
         for event in arrival_events.events:
+            logger.info(
+                "arrived: %s (%s) %s -> %s, captured=%s",
+                event.piece.id, event.piece.kind, event.source, event.destination,
+                f"{event.captured_piece.id}({event.captured_piece.kind})" if event.captured_piece else None,
+            )
             for observer in self._observers:
                 observer.on_arrival(event)
 
         if arrival_events.king_captured:
+            logger.info("game over: king captured")
             self._game_state.end_game()
             for observer in self._observers:
                 observer.on_game_over()

@@ -7,7 +7,7 @@ from . import config
 class BoardGeometry:
     window_width: int = config.WINDOW_SIZE[0]
     window_height: int = config.WINDOW_SIZE[1]
-    board_origin_x: int = 0
+    board_origin_x: int = config.SCORE_PANEL_WIDTH
     board_origin_y: int = 0
 
     @property
@@ -29,6 +29,16 @@ class BoardGeometry:
     def cell_h(self) -> int:
         """Pixel height of a single board cell, derived from the current window height."""
         return self.window_height // self.rows
+
+    @property
+    def canvas_width(self) -> int:
+        """Total window width: the board plus a HUD panel on each side."""
+        return self.window_width + 2 * config.SCORE_PANEL_WIDTH
+
+    @property
+    def canvas_height(self) -> int:
+        """Total window height (board height; HUD panels don't add vertically)."""
+        return self.window_height
 
     def cell_to_pixel(self, position: Position) -> tuple[int, int]:
         """Convert a board Position to its top-left pixel coordinate on screen."""

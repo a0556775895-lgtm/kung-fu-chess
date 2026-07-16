@@ -20,7 +20,7 @@ class PieceState(Enum):
     IDLE = auto()        # עומד במקומו
     MOVING = auto()      # בתנועה ליעד
     CAPTURED = auto()    # נאכל, הוסר מהלוח
-    AIRBORNE = auto()    # בקפיצה, חסין לתפיסה רגילה
+    AIRBORNE = auto()    # בeקפיצה, חסין לתפיסה רגילה
     LONG_REST = auto()   # מנוחה אחרי מהלך רגיל, אסור לזוז
     SHORT_REST = auto()  # מנוחה אחרי קפיצה, אסור לזוז
 

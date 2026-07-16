@@ -6,7 +6,11 @@ On a second click: if the target is a friendly piece, the selection
 switches to it; otherwise request_move is called and selection clears.
 """
 
+import logging
+
 from model.position import Position
+
+logger = logging.getLogger(__name__)
 
 
 class Controller:
@@ -43,6 +47,7 @@ class Controller:
 
     def handle_click(self, position: Position):
         """Route a click on position to selecting a piece or acting on the current selection."""
+        logger.debug("click at %s (current selection: %s)", position, self._selected_position)
         if self._selected_position is None:
             self._try_select_piece(position)
         else:
@@ -51,8 +56,12 @@ class Controller:
     def _try_select_piece(self, position: Position):
         """Select position if it holds a piece; ignore clicks on empty cells."""
         # Ignore first clicks on empty cells (section 11).
-        if self._board.get_piece_at(position) is not None:
+        piece = self._board.get_piece_at(position)
+        if piece is not None:
             self._selected_position = position
+            logger.debug("selected %s (%s) at %s", piece.id, piece.kind, position)
+        else:
+            logger.debug("click on empty cell %s ignored (no selection)", position)
 
     def _handle_selected_click(self, position: Position):
         """With a piece already selected, switch selection to another friendly piece or request a move to position."""
@@ -66,7 +75,14 @@ class Controller:
             and clicked_piece.color == selected_piece.color
         ):
             self._selected_position = position
+            logger.debug("switched selection to %s (%s) at %s", clicked_piece.id, clicked_piece.kind, position)
             return
 
+        logger.debug(
+            "requesting move for %s (%s): %s -> %s",
+            selected_piece.id if selected_piece else "?",
+            selected_piece.kind if selected_piece else "?",
+            source, position,
+        )
         self._game_engine.request_move(source, position)
         self._selected_position = None

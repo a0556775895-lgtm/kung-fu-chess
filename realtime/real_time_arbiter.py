@@ -4,7 +4,7 @@
 Timing rules:
 - N cells crossed = N * 1000ms (all kinds except Knight).
 - Knight always takes 3000ms regardless of distance.
-- A jump lasts exactly 1000ms; the piece stays on its cell.
+- A jump lasts piece_rules.get_airborne_duration() ms; the piece stays on its cell.
 
 Collision rule: when two enemy motions arrive at each other's source
 in the same tick, the one scheduled first wins. The other piece is
@@ -19,10 +19,14 @@ Promotion: applied at arrival when a pawn reaches the back rank.
 
 from __future__ import annotations
 
+import logging
+
 from dataclasses import dataclass, field
 from model.piece import PieceState
 from realtime.motion import Motion
 from rules import piece_rules
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -57,9 +61,14 @@ class RealTimeArbiter:
         return piece.id in self._motions
 
     def start_jump(self, piece) -> None:
-        """Mark `piece` as airborne for 1000 ms."""
-        self._airborne[piece.id] = self._current_time + 1000
+        """Mark `piece` as airborne for piece_rules.get_airborne_duration() ms."""
+        land_time = self._current_time + piece_rules.get_airborne_duration()
+        self._airborne[piece.id] = land_time
         piece.state = PieceState.AIRBORNE
+        logger.debug(
+            "t=%d: %s (%s) -> AIRBORNE, lands at t=%d",
+            self._current_time, piece.id, piece.kind, land_time,
+        )
 
     def start_motion(self, piece, source, destination) -> None:
         """Register a new Motion for `piece`. Timing comes entirely
@@ -71,6 +80,10 @@ class RealTimeArbiter:
         motion = Motion(piece, source, destination, self._current_time, arrival_time)
         self._motions[piece.id] = motion
         piece.state = PieceState.MOVING
+        logger.debug(
+            "t=%d: %s (%s) -> MOVING %s -> %s, arrives at t=%d",
+            self._current_time, piece.id, piece.kind, source, destination, arrival_time,
+        )
 
 
     def advance_time(self, ms) -> ArrivalEvents:
@@ -91,8 +104,11 @@ class RealTimeArbiter:
             for piece in row:
                 if piece is not None and piece.is_airborne() and piece.id not in self._airborne:
                     piece.state = PieceState.SHORT_REST
-                    self._resting[piece.id] = (
-                        self._current_time + piece_rules.get_short_rest_duration()
+                    rest_end = self._current_time + piece_rules.get_short_rest_duration()
+                    self._resting[piece.id] = rest_end
+                    logger.debug(
+                        "t=%d: %s (%s) landed -> SHORT_REST until t=%d",
+                        self._current_time, piece.id, piece.kind, rest_end,
                     )
 
     def _resolve_resting(self):
@@ -105,6 +121,10 @@ class RealTimeArbiter:
             for piece in row:
                 if piece is not None and piece.is_resting() and piece.id not in self._resting:
                     piece.state = PieceState.IDLE
+                    logger.debug(
+                        "t=%d: %s (%s) rest finished -> IDLE",
+                        self._current_time, piece.id, piece.kind,
+                    )
 
     def consume_royal_capture(self) -> bool:
         """Return whether a king was captured since the last call, resetting the flag."""
@@ -137,6 +157,10 @@ class RealTimeArbiter:
             # enemy_collision_white/black_started_first). Its own
             # arrival never happens -- drop it, don't touch the board.
             if piece.state == PieceState.CAPTURED:
+                logger.debug(
+                    "t=%d: %s (%s) arrival dropped -- already captured this tick (collision)",
+                    self._current_time, piece.id, piece.kind,
+                )
                 continue
 
             # Airborne-capture: if an enemy airborne piece occupies the
@@ -151,6 +175,11 @@ class RealTimeArbiter:
                 self._board.remove_piece(motion.source)
                 if piece.kind == "K":
                     self._royal_captured = True
+                logger.debug(
+                    "t=%d: %s (%s) captured mid-air by airborne %s (%s) at %s",
+                    self._current_time, piece.id, piece.kind,
+                    destination_piece.id, destination_piece.kind, motion.destination,
+                )
                 events.append(
                     ArrivalEvent(piece, motion.source, motion.destination, destination_piece)
                 )
@@ -158,15 +187,20 @@ class RealTimeArbiter:
 
             captured = self._board.move_piece(motion.source, motion.destination)
             piece.state = PieceState.LONG_REST
-            self._resting[piece.id] = (
-                self._current_time + piece_rules.get_long_rest_duration()
-            )
+            rest_end = self._current_time + piece_rules.get_long_rest_duration()
+            self._resting[piece.id] = rest_end
 
             promotion = piece_rules.get_promotion_kind(
                 piece.kind, piece.color, motion.destination, self._board.rows
             )
             if promotion:
                 piece.kind = promotion
+
+            logger.debug(
+                "t=%d: %s (%s) arrived at %s -> LONG_REST until t=%d%s",
+                self._current_time, piece.id, piece.kind, motion.destination, rest_end,
+                f", promoted to {promotion}" if promotion else "",
+            )
 
             if captured is not None:
                 captured.state = PieceState.CAPTURED
