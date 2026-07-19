@@ -13,6 +13,8 @@ parsing, or pixel mapping.
 
 import logging
 
+from bus.event_bus import EventBus
+from engine.events import Arrival, GameOver, GameStarted, JumpStarted, MotionStarted
 from model.board import Board
 from model.game_state import GameState
 from model.piece import PieceState
@@ -31,12 +33,26 @@ class GameEngine:
         self._game_state = GameState()
         self._arbiter = RealTimeArbiter(board)
         self._rule_engine = RuleEngine()
-        self._observers = []
+        self._bus = EventBus()
+
+    @property
+    def bus(self) -> EventBus:
+        """The raw typed-event stream (see engine/events.py) — for subscribers
+        that want events as-is rather than adapted to the GameObserver shape."""
+        return self._bus
 
     def subscribe(self, observer) -> None:
         """רושם GameObserver לקבלת התראות on_arrival/on_motion_started/
         on_jump_started/on_game_over. ראו view/observer.py."""
-        self._observers.append(observer)
+        self._bus.subscribe(MotionStarted, lambda e: observer.on_motion_started(
+            e.piece, e.source, e.destination, e.duration_ms))
+        self._bus.subscribe(JumpStarted, lambda e: observer.on_jump_started(e.piece, e.position))
+        self._bus.subscribe(Arrival, lambda e: observer.on_arrival(e.event))
+        self._bus.subscribe(GameOver, lambda e: observer.on_game_over())
+
+    def start_game(self) -> None:
+        """Publish GameStarted — the explicit moment a game begins."""
+        self._bus.publish(GameStarted())
 
     def request_jump(self, source):
         """Start a jump for the piece at source, unless the game is over or the piece is already moving/resting/captured."""
@@ -54,8 +70,7 @@ class GameEngine:
         self._arbiter.start_jump(piece)
         logger.info("jump started: %s (%s) at %s", piece.id, piece.kind, source)
 
-        for observer in self._observers:
-            observer.on_jump_started(piece, source)
+        self._bus.publish(JumpStarted(piece, source))
 
     def request_move(self, source, destination):
         """Validate and, if legal, start a move from source to destination; returns a _MoveResult indicating acceptance and reason."""
@@ -89,8 +104,7 @@ class GameEngine:
             "move started: %s (%s) %s -> %s, duration=%dms",
             piece.id, piece.kind, source, destination, duration,
         )
-        for observer in self._observers:
-            observer.on_motion_started(piece, source, destination, duration)
+        self._bus.publish(MotionStarted(piece, source, destination, duration))
 
         return _MoveResult(True, "ok")
 
@@ -104,14 +118,12 @@ class GameEngine:
                 event.piece.id, event.piece.kind, event.source, event.destination,
                 f"{event.captured_piece.id}({event.captured_piece.kind})" if event.captured_piece else None,
             )
-            for observer in self._observers:
-                observer.on_arrival(event)
+            self._bus.publish(Arrival(event))
 
         if arrival_events.king_captured:
             logger.info("game over: king captured")
             self._game_state.end_game()
-            for observer in self._observers:
-                observer.on_game_over()
+            self._bus.publish(GameOver())
 
     def snapshot(self, selected_cell=None):
         """Build a read-only GameSnapshot of the current board and game state for rendering."""
