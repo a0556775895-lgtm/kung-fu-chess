@@ -14,6 +14,8 @@ from .selection.highlight_loader import HighlightLoader          # חדש
 from .selection.selection_renderer import SelectionRenderer      # חדש
 from .hud.score.score_data import ScoreData
 from .hud.score.score_renderer import ScoreRenderer
+from .hud.moves_log.moves_log_data import MovesLogData
+from .hud.moves_log.moves_log_renderer import MovesLogRenderer
 from .input.mouse_command_extractor import MouseCommandExtractor
 from .input.commands import LocalCommandSender
 from . import config
@@ -51,11 +53,15 @@ class DisplayManager:
         self._selection_renderer = SelectionRenderer(self._highlight_loader, self._geometry)  # חדש
         self._score_data = ScoreData()
         self._score_renderer = ScoreRenderer(self._score_data, self._geometry)
+        self._moves_log_data = MovesLogData()
+        self._moves_log_renderer = MovesLogRenderer(self._moves_log_data, self._geometry)
 
-        self._renderers = [self._selection_renderer, self._piece_renderer, self._score_renderer]
+        self._renderers = [self._selection_renderer, self._piece_renderer,
+                            self._score_renderer, self._moves_log_renderer]
 
         self._game_engine.subscribe(self._piece_animator)
         self._game_engine.subscribe(self._score_data)
+        self._game_engine.subscribe(self._moves_log_data)
 
         self._board_mapper = BoardMapper(
             self._geometry.rows, self._geometry.cols, cell_size=self._geometry.cell_w
@@ -78,6 +84,7 @@ class DisplayManager:
             self._command_sender.send(command)
 
     def update(self, dt_ms: int) -> None:
+        self._moves_log_data.tick(dt_ms)  # advance before wait() so on_arrival timestamps this frame correctly
         self._game_engine.wait(dt_ms)
         snapshot = self._game_engine.snapshot(self._controller.selected_position)
         self._piece_animator.update(dt_ms, snapshot)

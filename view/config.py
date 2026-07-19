@@ -26,3 +26,10 @@ SCORE_PANEL_WIDTH = 160
 PANEL_BG_COLOR = (40, 40, 40)          # BGR
 SCORE_TEXT_COLOR = (255, 255, 255, 255)  # BGRA white
 SCORE_FONT_SIZE = 0.8
+
+# HUD: moves log table, stacked below the score block in the same side panels.
+MOVES_LOG_FONT_SIZE = 0.4
+MOVES_LOG_HEADER_Y = 110
+MOVES_LOG_ROW_HEIGHT = 18
+MOVES_LOG_TIME_COL_X = 0     # offset from the panel's margin
+MOVES_LOG_MOVE_COL_X = 70    # offset from the panel's margin
