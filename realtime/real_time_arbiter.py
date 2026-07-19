@@ -14,6 +14,11 @@ Airborne capture: if a moving enemy arrives at the cell of an airborne
 piece, the arriving piece is captured and removed; the airborne piece
 stays in place.
 
+Friendly-destination rule: if a piece arrives and its destination is
+occupied by a piece of the same color, it stops one cell short along
+its path instead of capturing it. If that cell is also occupied, the
+move is dropped and the piece stays at its source.
+
 Promotion: applied at arrival when a pawn reaches the back rank.
 """
 
@@ -182,6 +187,47 @@ class RealTimeArbiter:
                 )
                 events.append(
                     ArrivalEvent(piece, motion.source, motion.destination, destination_piece)
+                )
+                continue
+
+            # Friendly-destination case: the target cell is occupied by a
+            # piece of the same color (its motion resolved earlier this
+            # tick, or it was simply resting there). Land one cell short
+            # instead of capturing a friendly piece; if that cell is also
+            # occupied, the move is dropped entirely and the piece stays put.
+            if (
+                destination_piece is not None
+                and destination_piece.color == piece.color
+            ):
+                path = piece_rules.get_pathcells(
+                    piece.kind, piece.color, motion.source, motion.destination
+                )
+                stop_cell = path[-1] if path else motion.source
+                blocked_short = (
+                    stop_cell != motion.source
+                    and self._board.get_piece_at(stop_cell) is not None
+                )
+                if stop_cell == motion.source or blocked_short:
+                    piece.state = PieceState.IDLE
+                    logger.debug(
+                        "t=%d: %s (%s) move to %s dropped -- friendly at destination, no room to stop short",
+                        self._current_time, piece.id, piece.kind, motion.destination,
+                    )
+                    events.append(
+                        ArrivalEvent(piece, motion.source, motion.source, None)
+                    )
+                    continue
+
+                self._board.move_piece(motion.source, stop_cell)
+                piece.state = PieceState.LONG_REST
+                rest_end = self._current_time + piece_rules.get_long_rest_duration()
+                self._resting[piece.id] = rest_end
+                logger.debug(
+                    "t=%d: %s (%s) stopped short at %s -> LONG_REST until t=%d -- friendly occupies %s",
+                    self._current_time, piece.id, piece.kind, stop_cell, rest_end, motion.destination,
+                )
+                events.append(
+                    ArrivalEvent(piece, motion.source, stop_cell, None)
                 )
                 continue
 

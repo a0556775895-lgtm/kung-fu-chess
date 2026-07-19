@@ -460,6 +460,50 @@ def test_arbiter_captured_piece_arrival_skipped():
     assert board.get_piece_at(Position(0, 2)) is None
 
 
+def test_arbiter_friendly_destination_stops_one_cell_short():
+    board = make_board(["wR . . .", ". . . wR"])
+    arbiter = RealTimeArbiter(board)
+    mover = board.get_piece_at(Position(0, 0))
+    blocker = board.get_piece_at(Position(1, 3))
+    arbiter.start_motion(mover, Position(0, 0), Position(0, 3))
+    arbiter.start_motion(blocker, Position(1, 3), Position(0, 3))
+    arbiter.advance_time(1000)
+    # blocker arrives first and settles onto the mover's destination
+    assert board.get_piece_at(Position(0, 3)) is blocker
+    arbiter.advance_time(2000)
+    # mover stops one cell short instead of capturing its own blocker
+    assert board.get_piece_at(Position(0, 2)) is mover
+    assert board.get_piece_at(Position(0, 0)) is None
+    assert board.get_piece_at(Position(0, 3)) is blocker
+    assert mover.state == PieceState.LONG_REST
+
+
+def test_arbiter_friendly_destination_dropped_when_stop_cell_also_blocked():
+    board = make_board(["wR . wR wR"])
+    arbiter = RealTimeArbiter(board)
+    mover = board.get_piece_at(Position(0, 0))
+    arbiter.start_motion(mover, Position(0, 0), Position(0, 3))
+    arbiter.advance_time(3000)
+    # both the destination and the cell before it are occupied by friendlies
+    # -- the move is dropped entirely and the mover stays put
+    assert board.get_piece_at(Position(0, 0)) is mover
+    assert board.get_piece_at(Position(0, 2)) is not None
+    assert board.get_piece_at(Position(0, 3)) is not None
+    assert mover.state == PieceState.IDLE
+
+
+def test_arbiter_friendly_destination_dropped_on_adjacent_move():
+    board = make_board(["wR wR"])
+    arbiter = RealTimeArbiter(board)
+    mover = board.get_piece_at(Position(0, 0))
+    arbiter.start_motion(mover, Position(0, 0), Position(0, 1))
+    arbiter.advance_time(1000)
+    # no intermediate cell to stop at (adjacent move) -- move is dropped
+    assert board.get_piece_at(Position(0, 0)) is mover
+    assert board.get_piece_at(Position(0, 1)) is not None
+    assert mover.state == PieceState.IDLE
+
+
 # ── Controller ────────────────────────────────────────────────────────────────
 
 def _make_controller(lines):

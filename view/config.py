@@ -9,7 +9,7 @@ WINDOW_SIZE = (640, 640)      # (width, height) in pixels
 FRAME_DELAY_MS = 30           # loop timing - waitKey
 MAX_DT_MS = 100               # clamp - prevents pieces from jumping after the machine stalls
 
-ASSETS_ROOT = Path("view") / "assest" / "PIECES1"
+ASSETS_ROOT = Path("view") / "assest" / "pieces"
 BOARD_IMAGE_PATH = Path("view") / "assest" / "board.png"
 
 PIECE_KINDS = ("P", "N", "B", "R", "Q", "K")
