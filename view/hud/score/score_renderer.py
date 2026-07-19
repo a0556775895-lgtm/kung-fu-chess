@@ -16,7 +16,12 @@ class ScoreRenderer:
 
     def render(self, canvas, snapshot) -> None:
         """Draw White's score in the left panel and Black's score in the right panel."""
-        left_x = self._MARGIN_X
+        # side_panel.png's top section is a circular badge (outer half)
+        # + a text plaque (board-facing half). SCORE_LEFT_TEXT_X lands
+        # inside the plaque on the left panel; the right panel is mirrored
+        # by BackgroundLoader so its plaque is already board-facing, right
+        # where _MARGIN_X puts it.
+        left_x = config.SCORE_LEFT_TEXT_X
         right_x = self._geometry.board_origin_x + self._geometry.window_width + self._MARGIN_X
 
         self._draw_side(canvas, left_x, "White", self._score_data.white_score)

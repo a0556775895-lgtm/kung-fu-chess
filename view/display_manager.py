@@ -6,7 +6,9 @@ from input.board_mapper import BoardMapper
 from input.controller import Controller
 
 from .geometry import BoardGeometry
+from .background.background_loader import BackgroundLoader
 from .board.board_loader import BoardLoader
+from .board.board_renderer import BoardRenderer
 from .animation.animation_library import AnimationLibrary
 from .animation.piece_animator import PieceAnimator
 from .pieces.piece_renderer import PieceRenderer
@@ -40,14 +42,16 @@ class DisplayManager:
         self._game_engine = GameEngine(self._board)
 
         self._geometry = BoardGeometry()
+        self._background_loader = BackgroundLoader(self._geometry)
         self._board_loader = BoardLoader(self._geometry)
         self._animation_library = AnimationLibrary(self._geometry)
         self._highlight_loader = HighlightLoader(self._geometry)        # חדש
 
-        for loader in (self._board_loader, self._animation_library,
+        for loader in (self._background_loader, self._board_loader, self._animation_library,
                        self._highlight_loader):                          # עודכן - נוסף highlight_loader
             loader.load()
 
+        self._board_renderer = BoardRenderer(self._board_loader, self._geometry)
         self._piece_animator = PieceAnimator(self._animation_library, self._geometry)
         self._piece_renderer = PieceRenderer(self._animation_library, self._piece_animator)
         self._selection_renderer = SelectionRenderer(self._highlight_loader, self._geometry)  # חדש
@@ -56,7 +60,7 @@ class DisplayManager:
         self._moves_log_data = MovesLogData()
         self._moves_log_renderer = MovesLogRenderer(self._moves_log_data, self._geometry)
 
-        self._renderers = [self._selection_renderer, self._piece_renderer,
+        self._renderers = [self._board_renderer, self._selection_renderer, self._piece_renderer,
                             self._score_renderer, self._moves_log_renderer]
 
         self._game_engine.subscribe(self._piece_animator)
@@ -91,7 +95,7 @@ class DisplayManager:
         self._last_snapshot = snapshot
 
     def render(self):
-        canvas = self._board_loader.fresh_canvas()
+        canvas = self._background_loader.fresh_canvas()
         for renderer in self._renderers:
             renderer.render(canvas, self._last_snapshot)
         return canvas

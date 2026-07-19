@@ -40,8 +40,10 @@ class MovesLogRenderer:
                              config.MOVES_LOG_FONT_SIZE, config.SCORE_TEXT_COLOR)
 
     def _visible_row_count(self) -> int:
-        """How many move rows fit below the header within the panel's height."""
+        """How many move rows fit between the header and the bottom of
+        side_panel.png's parchment area, without spilling onto the plaque
+        below it."""
         available_height = (
-            self._geometry.canvas_height - config.MOVES_LOG_HEADER_Y - config.MOVES_LOG_ROW_HEIGHT
+            config.MOVES_LOG_BOTTOM_Y - config.MOVES_LOG_HEADER_Y - config.MOVES_LOG_ROW_HEIGHT
         )
         return max(0, available_height // config.MOVES_LOG_ROW_HEIGHT)

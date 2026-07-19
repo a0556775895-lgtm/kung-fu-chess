@@ -5,12 +5,14 @@ from rules.piece_rules import get_airborne_duration
 BOARD_ROWS = 8
 BOARD_COLS = 8
 
-WINDOW_SIZE = (640, 640)      # (width, height) in pixels
+WINDOW_SIZE = (480, 480)      # (width, height) in pixels -- the board itself, not the whole canvas
 FRAME_DELAY_MS = 30           # loop timing - waitKey
 MAX_DT_MS = 100               # clamp - prevents pieces from jumping after the machine stalls
 
 ASSETS_ROOT = Path("view") / "assest" / "pieces"
 BOARD_IMAGE_PATH = Path("view") / "assest" / "board.png"
+BACKGROUND_IMAGE_PATH = Path("view") / "assest" / "background.png"
+SIDE_PANEL_IMAGE_PATH = Path("view") / "assest" / "side_panel.png"
 
 PIECE_KINDS = ("P", "N", "B", "R", "Q", "K")
 PIECE_COLORS = ("W", "B")
@@ -20,16 +22,24 @@ JUMP_DURATION_MS = get_airborne_duration()   # single source of truth: rules.pie
 
 HIGHLIGHT_IMAGE_PATH = Path("view") / "assest" / "highlight.png"
 
-# HUD: side panels flanking the board (score, etc.). board_origin_x uses
-# this to leave room on the left, matching an equal-width panel on the right.
-SCORE_PANEL_WIDTH = 160
-PANEL_BG_COLOR = (40, 40, 40)          # BGR
+# HUD: side panels flanking the board, each showing side_panel.png (name
+# plaque on top, log parchment in the middle). Width is derived from that
+# image's own aspect ratio (376:816) at the board's height, so it's drawn
+# at native proportions instead of being stretched.
+SCORE_PANEL_WIDTH = 221
 SCORE_TEXT_COLOR = (255, 255, 255, 255)  # BGRA white
 SCORE_FONT_SIZE = 0.8
+# x offset (from the left panel's own left edge) for name/score text --
+# lands inside side_panel.png's plaque, which sits on the board-facing
+# half of the top section (the other half is the circular badge shape).
+SCORE_LEFT_TEXT_X = 124
 
-# HUD: moves log table, stacked below the score block in the same side panels.
+# HUD: moves log table, positioned inside side_panel.png's middle
+# parchment area (y ~109-368 at this panel height) so rows stay on the
+# artwork instead of spilling onto the plaques above/below it.
 MOVES_LOG_FONT_SIZE = 0.4
-MOVES_LOG_HEADER_Y = 110
+MOVES_LOG_HEADER_Y = 145
+MOVES_LOG_BOTTOM_Y = 335
 MOVES_LOG_ROW_HEIGHT = 18
 MOVES_LOG_TIME_COL_X = 0     # offset from the panel's margin
 MOVES_LOG_MOVE_COL_X = 70    # offset from the panel's margin
