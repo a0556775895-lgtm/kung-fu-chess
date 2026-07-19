@@ -9,6 +9,7 @@
 - **מנוחה (cooldown)** — אחרי מהלך או קפיצה כלי נכנס לתקופת מנוחה שבה אינו יכול לפעול.
 - **הכתרת רגלי** — רגלי שמגיע לשורה האחרונה הופך למלכה.
 - **ניקוד** — כל צד צובר נקודות על תפיסת כלי יריב: רגלי=1, פרש/רץ=3, צריח=5, מלכה=9, מלך=0 (תפיסתו מסיימת את המשחק). הניקוד מוצג בפאנל משני צדי הלוח.
+- **יומן מהלכים** — כל מהלך שהושלם (לא קפיצות, ולא כלי שנתפס באוויר) נרשם בסימון אלגברי עם חותמת זמן, בפאנל של כל צד.
 - **חוקי תנועה רגילים** לכל סוגי הכלים (כולל חסימה ע"י כלים שביניים), ללא check/checkmate/castling/en passant.
 
 ## התקנה והרצה
@@ -37,7 +38,15 @@ realtime/   ניהול תנועות פעילות בזמן אמת (Motion, RealTi
 engine/     GameEngine — נקודת הכניסה הציבורית לכל פקודות המשחק
 input/      תרגום קליקים/פיקסלים לפקודות
 boardio/    פרסור/הדפסה של לוח כטקסט
-view/       שכבת התצוגה הגרפית (OpenCV): לוח, כלים, אנימציה, HUD (כולל ניקוד)
+view/       שכבת התצוגה הגרפית (OpenCV):
+              board/       טעינה וציור הלוח
+              pieces/      טעינה וציור הכלים
+              animation/   מכונת מצבי אנימציה לכלים
+              selection/   הדגשת כלי נבחר
+              background/  רקע ופאנלים צדדיים
+              hud/score/       ניקוד לכל צד
+              hud/moves_log/   יומן מהלכים לכל צד
+              input/       חילוץ פקודות מאירועי עכבר (click/jump)
 texttests/  DSL טקסטואלי להרצת תרחישי משחק בלי ממשק גרפי
 tests/      בדיקות יחידה ואינטגרציה (pytest)
 tools/      סקריפטים חד-פעמיים ליצירת נכסים גרפיים
@@ -59,7 +68,7 @@ view      — לוח, כלים, אנימציה, קלט עכבר, HUD — כל מ
 
 **זרימת מהלך טיפוסית:** קליק עכבר → `Controller`/`GameEngine.request_move` → `RuleEngine` מאמת חוקיות → `RealTimeArbiter` מתזמן תנועה → ב-`GameEngine.wait()` בכל frame מתקדם הזמן, ותנועות שהגיעו נפתרות (כולל תפיסות/קפיצות).
 
-**Observer pattern:** `GameEngine.subscribe(observer)` מאפשר לרכיבי ה-view "להאזין" לאירועי משחק (`on_arrival`, `on_motion_started`, `on_jump_started`, `on_game_over`) בלי שהמנוע יֵדע דבר על אנימציה, ציור או HUD. כך, למשל, האנימציה (`PieceAnimator`) והניקוד (`ScoreData`) הם רק "מאזינים" חיצוניים — לא חלק מהמנוע עצמו.
+**Observer pattern:** `GameEngine.subscribe(observer)` מאפשר לרכיבי ה-view "להאזין" לאירועי משחק (`on_arrival`, `on_motion_started`, `on_jump_started`, `on_game_over`) בלי שהמנוע יֵדע דבר על אנימציה, ציור או HUD. כך, למשל, האנימציה (`PieceAnimator`), הניקוד (`ScoreData`) ויומן המהלכים (`MovesLogData`) הם רק "מאזינים" חיצוניים — לא חלק מהמנוע עצמו.
 
 **שני "פנים" לאותו core:** `main.py` מריץ ממשק גרפי (OpenCV) דרך `DisplayManager`, בעוד `texttests/` מריץ בדיוק אותם `Controller`/`GameEngine` בלי שום ממשק גרפי, דרך DSL טקסטואלי (`click x y` / `wait ms` / `print board`) — הוכחה שהליבה (model/rules/realtime/engine) לא תלויה כלל באופן התצוגה.
 
