@@ -21,6 +21,7 @@ ANIMATION_STATES = ("idle", "move", "jump", "short_rest", "long_rest")
 JUMP_DURATION_MS = get_airborne_duration()   # single source of truth: rules.piece_rules
 
 HIGHLIGHT_IMAGE_PATH = Path("view") / "assest" / "highlight.png"
+SOUNDS_ROOT = Path("view") / "assest" / "sounds"
 
 # HUD: side panels flanking the board, each showing side_panel.png (name
 # plaque on top, log parchment in the middle). Width is derived from that

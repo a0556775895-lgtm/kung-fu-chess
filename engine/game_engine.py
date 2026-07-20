@@ -41,14 +41,22 @@ class GameEngine:
         that want events as-is rather than adapted to the GameObserver shape."""
         return self._bus
 
-    def subscribe(self, observer) -> None:
-        """רושם GameObserver לקבלת התראות on_arrival/on_motion_started/
-        on_jump_started/on_game_over. ראו view/observer.py."""
-        self._bus.subscribe(MotionStarted, lambda e: observer.on_motion_started(
-            e.piece, e.source, e.destination, e.duration_ms))
-        self._bus.subscribe(JumpStarted, lambda e: observer.on_jump_started(e.piece, e.position))
-        self._bus.subscribe(Arrival, lambda e: observer.on_arrival(e.event))
-        self._bus.subscribe(GameOver, lambda e: observer.on_game_over())
+    def subscribe(self, observer):
+        """Register a GameObserver and return a function that removes all of its subscriptions."""
+        cancellations = [
+            self._bus.subscribe(MotionStarted, lambda e: observer.on_motion_started(
+                e.piece, e.source, e.destination, e.duration_ms)),
+            self._bus.subscribe(JumpStarted, lambda e: observer.on_jump_started(
+                e.piece, e.position)),
+            self._bus.subscribe(Arrival, lambda e: observer.on_arrival(e.event)),
+            self._bus.subscribe(GameOver, lambda e: observer.on_game_over()),
+        ]
+
+        def unsubscribe() -> None:
+            for cancel in cancellations:
+                cancel()
+
+        return unsubscribe
 
     def start_game(self) -> None:
         """Publish GameStarted — the explicit moment a game begins."""

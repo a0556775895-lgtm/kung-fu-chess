@@ -34,7 +34,7 @@ JUMP_DURATION = {
     "R": 10000,
     "B": 10000,
     "K": 10000,
-    "N": 10000,
+    "N": 3000,
 }
 
 # Kinds whose movement is a flat jump rather than steps along a line --

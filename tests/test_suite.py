@@ -900,3 +900,22 @@ def test_game_engine_subscribe_receives_arrival_and_game_over():
     engine.wait(1000)
     assert len(observer.arrivals) == 1
     assert observer.game_over_calls == 1
+
+
+def test_game_engine_unsubscribe_stops_all_observer_notifications():
+    board = make_board(["wR . .", ". . bK"])
+    engine = GameEngine(board)
+    observer = _RecordingObserver()
+    unsubscribe = engine.subscribe(observer)
+
+    unsubscribe()
+    unsubscribe()
+
+    engine.request_move(Position(0, 0), Position(0, 2))
+    engine.wait(2000)
+    engine.request_jump(Position(1, 2))
+
+    assert observer.motion_started == []
+    assert observer.jump_started == []
+    assert observer.arrivals == []
+    assert observer.game_over_calls == 0

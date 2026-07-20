@@ -18,6 +18,7 @@ from .hud.score.score_data import ScoreData
 from .hud.score.score_renderer import ScoreRenderer
 from .hud.moves_log.moves_log_data import MovesLogData
 from .hud.moves_log.moves_log_renderer import MovesLogRenderer
+from .audio.sound_player import SoundPlayer
 from .input.mouse_command_extractor import MouseCommandExtractor
 from .input.commands import LocalCommandSender
 from . import config
@@ -66,6 +67,7 @@ class DisplayManager:
         self._game_engine.subscribe(self._piece_animator)
         self._game_engine.subscribe(self._score_data)
         self._game_engine.subscribe(self._moves_log_data)
+        self._sound_player = SoundPlayer(self._game_engine.bus)
 
         self._board_mapper = BoardMapper(
             self._geometry.rows, self._geometry.cols, cell_size=self._geometry.cell_w
@@ -101,21 +103,24 @@ class DisplayManager:
         return canvas
 
     def run(self):
+        self._game_engine.start_game()
         last_time = cv2.getTickCount()
         tick_freq = cv2.getTickFrequency()
 
-        while True:
-            now = cv2.getTickCount()
-            dt_ms = int((now - last_time) / tick_freq * 1000)
-            last_time = now
-            dt_ms = min(dt_ms, config.MAX_DT_MS)
+        try:
+            while True:
+                now = cv2.getTickCount()
+                dt_ms = int((now - last_time) / tick_freq * 1000)
+                last_time = now
+                dt_ms = min(dt_ms, config.MAX_DT_MS)
 
-            self.update(dt_ms)
-            canvas = self.render()
+                self.update(dt_ms)
+                canvas = self.render()
 
-            cv2.imshow(WINDOW_NAME, canvas.img)
-            key = cv2.waitKey(config.FRAME_DELAY_MS)
-            if key == 27:  # Esc
-                break
-
-        cv2.destroyAllWindows()
+                cv2.imshow(WINDOW_NAME, canvas.img)
+                key = cv2.waitKey(config.FRAME_DELAY_MS)
+                if key == 27:  # Esc
+                    break
+        finally:
+            self._sound_player.close()
+            cv2.destroyAllWindows()

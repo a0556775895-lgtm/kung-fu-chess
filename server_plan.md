@@ -194,10 +194,19 @@ NetworkClient מקבל                                                    Networ
   | S→C | `STATE <לוח>\|<flags>` | פורמט קרוב ל-`board_printer.py` |
   | S→C | `EVENT MOTION/JUMP/ARRIVAL/GAMEOVER ...` | שידור ישיר של אירועי ה-bus, מוגבל למשחק |
 
+- **פורמט המהלך נשמר בהתאם לדרישה** (`WQe2e5` / `BNe4`). עם זאת, הצבע וסוג הכלי שמופיעים בהודעה אינם מקור סמכות: השרת מאמת אותם מול החיבור, הצבע שהוקצה לו והכלי שנמצא בפועל במשבצת המקור. לקוח אינו יכול להזיז כלי של היריב באמצעות שינוי הטקסט.
+- לכל בקשת לקוח יוצמד `request_id`, שיוחזר ב-`OK`/`ERR`, כדי שאפשר יהיה לשייך תשובה לפקודה גם כשכמה הודעות נמצאות בתנועה במקביל.
+- כל `STATE`/`EVENT` יכלול `game_id`, מספר `sequence` עולה ו-`server_time_ms`. הלקוח יתעלם מהודעות ישנות או כפולות. פקודות המהלך נשארות בפורמט הטקסט הנדרש; payload מורכב של `STATE`/`EVENT` יישלח כ-JSON בתוך מעטפת טקסט, במקום פורמט לוח עמום.
+- `STATE` הוא snapshot מלא שמספיק לחיבור באמצע משחק או לחיבור מחדש. הוא כולל: כלים ומצביהם, תנועה פעילה (מקור/יעד/זמן הגעה), זמני נחיתה ומנוחה, ניקוד, מצב משחק, מנצח, תפקיד הלקוח וזמן השרת.
+- לכל חיבור נשמר `ConnectionContext`: `user_id`, `session_token`, `game_id`, `role` (`PLAYER`/`SPECTATOR`) ו-`color`. ה-Controller בודק הרשאה לפני כל `MOVE`/`JUMP`, בנוסף לבדיקת חוקיות המהלך ב-BLL.
+
 - `server/match.py`: לולאת קליטה לכל חיבור (מעבירה ל-Controller עם ה-`game_id` שלה) + לולאת טיק (`engine.wait(TICK_MS)` כל 50ms — תחליף ללולאת ה-`cv2`, אחת per Match).
+- לולאת הטיק משתמשת בשעון מונוטוני ומעבירה ל-`engine.wait(...)` את הזמן שעבר בפועל, ולא מניחה שכל סיבוב ארך בדיוק 50ms. כך עומס רגעי בשרת לא ייצור drift בזמן המשחק.
 - `server/game_server.py`: `websockets.serve(...)`, מקצה `game_id` לחיבור (ב-B: תמיד "default"), חיבור ראשון=White, שני=Black (מספיק לדרישת שלב C).
 - `client/network_client.py`: thread נפרד + asyncio (כי `cv2.waitKey` חוסם וצריך thread ראשי) + `queue.Queue` יוצא/נכנס.
+- `EventBus.publish()` נשאר סינכרוני ואינו מבצע `await websocket.send()`. ה-Broadcaster מכניס הודעות לתור יוצא מוגבל לכל חיבור, ומשימת writer אסינכרונית שולחת אותן. לקוח איטי אינו רשאי לחסום את ה-GameEngine או לקוחות אחרים.
 - `client/remote_game_engine_proxy.py` + `client/snapshot_board_view.py`: מתחזים ל-`GameEngine`/`Board` כך ש-`Controller`/`DisplayManager` הקיימים לא זזים בלוגיקה.
+- **בעלות על הזמן**: רק השרת מקדם את זמן המשחק ומכריע הגעה, תפיסה, נחיתה ו-cooldown. שעון הלקוח משמש לאנימציה, heartbeat וזיהוי ניתוק בלבד. בזמן ניתוק הלקוח רשאי להשלים חזותית אנימציה שכבר ידועה לו, אך אינו משנה מצב משחק סמכותי; לאחר reconnect מתקבל `STATE` מלא שמיישר את התצוגה.
 - `view/display_manager.py`: `__init__(self, board, game_engine)` חובה.
 - `client/local_session.py`: בונה BLL ישירות (מקומי) ומריץ `DisplayManager` — `main.py` קורא לכאן. **עוקף את ה-Controller במכוון** (ראו סעיף 9).
 
@@ -212,15 +221,19 @@ NetworkClient מקבל                                                    Networ
 - `server/elo.py`: `compute_elo(rating_a, rating_b, score_a, k=32)` — נוסחה סטנדרטית, פונקציה טהורה.
 - `server/controller.py`: מטפל גם ב-`LOGIN <user> <pass>`/`REGISTER`.
 - **שינוי BLL קטן**: `GameEngine` לא מדווח היום מי ניצח. מוסיף `winner_color` property (Protocol `on_game_over()` לא משתנה) — `server/match.py` קורא לזה בסיום, מזין ל-`elo.compute_elo` ואז ל-DAL.
+- תוצאת משחק היא אובייקט מפורש הכולל `winner_color`, סיבה (`KING_CAPTURE`/`RESIGN`/`DISCONNECT`) וזמן סיום. כל מסלולי הסיום עוברים דרך `Match.finish(result)` אידמפוטנטי, כדי ששמירת המשחק ועדכון ELO יתבצעו פעם אחת בלבד ובטרנזקציה אחת.
 
 ### שלב E — Matchmaking + ניתוקים (שקף 6)
 - `server/matchmaker.py`: `find_or_wait(player)` — התאמה בטווח ±100; אם לא — `asyncio.sleep` עד 60 שניות ואז `MATCH TIMEOUT`. בדיקת timeout מבודדת בפונקציה טהורה (`has_timed_out`) לבדיקה בלי `sleep` אמיתי. עם התאמה — **יוצר `Match` חדש ורושם אותו ב-`game_registry`** (כאן, לראשונה, ה-registry מקבל יותר ממשחק אחד בפועל).
 - ניתוק: `server/match.py` תופס `ConnectionClosed`, פותח טיימר 20 שניות, משדר `EVENT DISCONNECT <sec>` (מוגבל לאותו משחק), ואם חולף — קורא ל-`GameEngine.resign(color)` (חדש, מקביל ל"מלך נתפס").
+- זיהוי ניתוק נעשה באמצעות ping/pong של WebSocket ו-timeout, ולא באמצעות קידום זמן משחק בצד הלקוח. הלקוח עובר בין `CONNECTED`/`UNSTABLE`/`DISCONNECTED`/`RECONNECTING`, חוסם פקודות משחק כשהקשר אבד ומציג את מצב החיבור.
+- login מוצלח מחזיר `session_token` זמני. בתוך חלון החסד הלקוח שולח `RECONNECT <session_token>`; השרת משייך את החיבור החדש לאותו משתמש, Match וצבע, מבטל resign ושולח snapshot מלא.
 - `view/hud/countdown/`: ספירה לאחור על המסך.
 
 ### שלב F — חדרים + צופים + לוגים (שקף 7)
 - `client/room_dialog.py`: חלון Tkinter (Entry + Create/Join/Cancel), רץ ומסתיים **לפני** פתיחת ה-OpenCV.
 - `server/rooms.py`: `create_room()` (מזהה קצר) → יוצר=White, **יוצר `Match` חדש ב-`game_registry`**; `join_room(id, player)` → שני=Black, כל הבא=צופה (חסום מ-MOVE/JUMP, מקבל STATE/EVENT של אותו `game_id`).
+- השרת מנהל מצב משתמש מפורש (`OFFLINE`/`LOBBY`/`QUEUED`/`IN_GAME`/`SPECTATING`) כדי למנוע כניסה כפולה לתור, התאמה לשני משחקים או משחק וצפייה במקביל.
 - מזהה חדר "בראש המסך": `view/hud/room_banner/` — בנר בתוך קנבס ה-OpenCV.
 - לוגים: `server/main.py`→`server.log`; `client/main.py`→`client_<username>.log` (נקבע אחרי login, כדי ששני לקוחות מקומיים לא ידרסו קובץ זה של זה).
 
@@ -232,6 +245,8 @@ NetworkClient מקבל                                                    Networ
 - `test_elo.py`, `test_auth.py`+`test_repository.py` (מול `sqlite3.connect(":memory:")`).
 - `test_matchmaker.py` (שעון מוזרק, בלי sleep אמיתי), `test_rooms.py` (בלי sockets).
 - בדיקת אינטגרציה אחת (`test_server_roundtrip.py`, שלב B) — שרת+לקוח אמיתיים על localhost.
+- בדיקות נוספות לפרוטוקול והרשאות: לקוח שחור שמתחזה ללבן, צופה ששולח מהלך, הודעה פגומה, `sequence` ישן/כפול ושיוך `request_id` לתגובה.
+- בדיקות מחזור חיים: reconnect בתוך חלון החסד, resign לאחר timeout, סיום משחק אידמפוטנטי, ניקוי Match מה-registry ולקוח איטי שאינו חוסם אחרים.
 - `requirements.txt` חדש: `opencv-python`, `numpy`, `websockets` (מותקן כבר, גרסה 16.0), `pytest`, `pytest-cov`.
 
 ## 7. אימות End-to-End לכל שלב
@@ -255,6 +270,9 @@ NetworkClient מקבל                                                    Networ
 - פורמט ההודעות הלא-move (login/room/play/state) — הדרישות נותנות רק דוגמת move (`WQe2e5`); שאר הפורמט (`LOGIN`, `ROOM CREATE`, `STATE ...`) הוא הרחבה סבירה באותו סגנון טקסטואלי, לא כתוב במפורש בשקפים.
 - "Room" ב-Create מושיב את היוצר כ-White מיד (לא רק שומר מזהה) — סביר לפי "the second person that joins... is Black", אך לא נאמר מפורש מה קורה ליוצר.
 - חלון ה-Room (שקף 7) הוא Tkinter (טקסט+3 כפתורים) — לא ctypes MessageBox פשוט, כי צריך תיבת טקסט וגם 3 כפתורים מותאמים.
+- פורמט `MOVE WQe2e5` נשמר לפי הדרישה. הנתונים `WQ` מאומתים בצד השרת ואינם משמשים כהרשאה.
+- פורמט `STATE`/`EVENT` המורכב ניתן לשינוי ולכן יוגדר כמעטפת טקסט עם payload מסוג JSON, כולל `sequence` וזמן שרת.
+- בזמן ניתוק שעון התצוגה ממשיך מקומית לצורכי אנימציה וזיהוי timeout, אך שעון המשחק והכרעות המשחק נשארים בשרת בלבד.
 
 ## 10. שיקולי קנה מידה (אלפי משתמשים מקבילים)
 
@@ -271,3 +289,10 @@ NetworkClient מקבל                                                    Networ
 - **SQLite**: קובץ יחיד, writer יחיד — מספיק לפרויקט לימודי/קנה-מידה נמוך, לא לכתיבות מקבילות בקנה-מידה גדול. בזכות בידוד ה-DAL, זה שינוי מוכל (להחליף repository implementation), לא ripple effect.
 - **מצב זיכרון פנימי** של `Matchmaker`/`game_registry` (רשימות ממתינים, מיפוי game_id) חי בזיכרון של תהליך יחיד — מעבר למספר תהליכי שרת ידרוש מצב משותף (Redis/DB), כי כל תהליך "רואה" רק את הזיכרון שלו.
 - **בידוד broadcast בין משחקים** (הוזכר בשלב B) הוא תיקון-קדם נדרש **גם בלי** שאלת קנה-המידה — בלעדיו, משחק שני מקביל היה "מדליף" מהלכים לשחקנים במשחק אחר. זו לא רק דאגת עומס, אלא תקינות פונקציונלית בסיסית.
+
+## 11. כללי עבודה מוסכמים למימוש התוכנית
+
+- עוזר הקידוד רשאי להציע חלופות, סיכונים ורעיונות, אך אינו קובע החלטות מוצר או ארכיטקטורה במקום בעל הפרויקט.
+- לפני כל שינוי בקוד יינתן הסבר על השינוי המוצע, הסיבה לו ומקומו בתמונה הכללית, ויידרש אישור מפורש מבעל הפרויקט.
+- שינוי בתיעוד או בקוד יתבצע רק במסגרת שאושרה; אישור לשלב אחד אינו אישור אוטומטי לשלבים הבאים.
+- ההסברים יהיו ברורים ומפורטים מספיק לקבלת החלטה, אך התשובות עצמן יישארו קצרות ותמציתיות ככל האפשר.
