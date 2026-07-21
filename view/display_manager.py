@@ -14,7 +14,6 @@ from .animation.piece_animator import PieceAnimator
 from .pieces.piece_renderer import PieceRenderer
 from .selection.highlight_loader import HighlightLoader          # חדש
 from .selection.selection_renderer import SelectionRenderer      # חדש
-from .hud.score.score_data import ScoreData
 from .hud.score.score_renderer import ScoreRenderer
 from .hud.moves_log.moves_log_data import MovesLogData
 from .hud.moves_log.moves_log_renderer import MovesLogRenderer
@@ -56,8 +55,7 @@ class DisplayManager:
         self._piece_animator = PieceAnimator(self._animation_library, self._geometry)
         self._piece_renderer = PieceRenderer(self._animation_library, self._piece_animator)
         self._selection_renderer = SelectionRenderer(self._highlight_loader, self._geometry)  # חדש
-        self._score_data = ScoreData()
-        self._score_renderer = ScoreRenderer(self._score_data, self._geometry)
+        self._score_renderer = ScoreRenderer(self._geometry)
         self._moves_log_data = MovesLogData()
         self._moves_log_renderer = MovesLogRenderer(self._moves_log_data, self._geometry)
 
@@ -65,7 +63,6 @@ class DisplayManager:
                             self._score_renderer, self._moves_log_renderer]
 
         self._game_engine.subscribe(self._piece_animator)
-        self._game_engine.subscribe(self._score_data)
         self._game_engine.subscribe(self._moves_log_data)
         self._sound_player = SoundPlayer(self._game_engine.bus)
 

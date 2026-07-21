@@ -613,6 +613,38 @@ def test_game_engine_snapshot():
     assert len(snap.pieces) == 1
     assert snap.pieces[0].kind == "R"
     assert snap.game_over is False
+    assert snap.scores == {"w": 0, "b": 0}
+
+
+def test_game_engine_snapshot_scores_normal_capture():
+    board = make_board(["wR bN"])
+    engine = GameEngine(board)
+
+    engine.request_move(Position(0, 0), Position(0, 1))
+    engine.wait(1000)
+
+    assert engine.snapshot().scores == {"w": 3, "b": 0}
+
+
+def test_game_engine_snapshot_scores_airborne_capture():
+    board = make_board(["wR bN"])
+    engine = GameEngine(board)
+
+    engine.request_jump(Position(0, 1))
+    engine.request_move(Position(0, 0), Position(0, 1))
+    engine.wait(1000)
+
+    assert engine.snapshot().scores == {"w": 0, "b": 5}
+
+
+def test_game_engine_move_without_capture_does_not_change_score():
+    board = make_board(["wR ."])
+    engine = GameEngine(board)
+
+    engine.request_move(Position(0, 0), Position(0, 1))
+    engine.wait(1000)
+
+    assert engine.snapshot().scores == {"w": 0, "b": 0}
 
 
 def test_game_engine_snapshot_with_selected_cell():

@@ -35,7 +35,7 @@ view/
 │   └── piece_animator.py          # PieceAnimator
 │
 ├── hud/
-│   ├── score/{score_data.py, score_renderer.py}
+│   ├── score/score_renderer.py
 │   ├── moves_log/{moves_log_data.py, moves_log_renderer.py}
 │   └── player_panel/player_panel_renderer.py
 │
@@ -152,7 +152,7 @@ class AnimationLibrary:
 **קבוע קפיצה:** משך זמן קפיצה תמיד **1000ms** (תואם ל-hardcode בפועל ב-`RealTimeArbiter.start_jump`) — לא נעשה שימוש ב-`piece_rules.get_jump_duration()`/`JUMP_DURATION` (מוגדרים בקוד הקיים אך לא נקראים בשום מקום).
 
 ### `hud/*`
-כל תת-תיקייה (`score/`, `moves_log/`, `player_panel/`) בנויה מ-Data (מחשב/מחזיק מידע, נרשם כ-`GameObserver`) ו-Renderer (מצייר, `put_text`/`draw_on` בלבד). `score_data` בודק `event.captured_piece is not None` בתוך `on_arrival` כדי לצבור ניקוד; לא קיים callback נפרד לתפיסה.
+רכיבי ה-HUD מציירים בלבד או מחזיקים מידע תצוגתי שאינו סמכותי. `ScoreRenderer` קורא את הניקוד הסמכותי מתוך `GameSnapshot.scores`; הוא אינו מחשב תפיסות. `MovesLogData` נשאר `GameObserver` משום שיומן המהלכים הוא מידע תצוגתי מקומי בשלב הנוכחי.
 
 ### `input/mouse_command_extractor.py` — `MouseCommandExtractor`
 אחראי רק על **offset** (מיקום הלוח בחלון, `geometry.board_origin_x/y`). כל חישוב פיקסל→תא מואצל ל-`BoardMapper` הקיים. שני מסלולים: `extract_left_click` → `ClickCommand`, `extract_right_click` → `JumpCommand`. מחזיר `None` אם הקליק מחוץ ללוח (על ה-HUD).

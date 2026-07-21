@@ -2,7 +2,7 @@
 
 Mirrors the GameObserver Protocol (view/observer.py) one-to-one, so
 GameEngine.subscribe() can adapt between the two without any consumer
-(PieceAnimator, ScoreData, ...) needing to change.
+(PieceAnimator, MovesLogData, ...) needing to change.
 """
 
 from dataclasses import dataclass

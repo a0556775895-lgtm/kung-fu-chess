@@ -26,6 +26,18 @@ from engine.snapshot import GameSnapshot, MotionSnapshot, PieceSnapshot
 logger = logging.getLogger(__name__)
 
 
+# Standard chess material values. Capturing the king ends the game, so it
+# deliberately contributes no material points.
+_PIECE_VALUES = {
+    "P": 1,
+    "N": 3,
+    "B": 3,
+    "R": 5,
+    "Q": 9,
+    "K": 0,
+}
+
+
 class GameEngine:
     def __init__(self, board: Board):
         """Set up game state, the motion arbiter, and the rule engine for the given board."""
@@ -132,6 +144,7 @@ class GameEngine:
                 event.piece.id, event.piece.kind, event.source, event.destination,
                 f"{event.captured_piece.id}({event.captured_piece.kind})" if event.captured_piece else None,
             )
+            self._record_capture_score(event)
             self._bus.publish(Arrival(event))
 
         if arrival_events.king_captured:
@@ -171,8 +184,23 @@ class GameEngine:
             ],
             airborne_until=self._arbiter.airborne_until,
             resting_until=self._arbiter.resting_until,
+            scores=self._game_state.snapshot_scores(),
             server_time_ms=self._arbiter.current_time_ms,
         )
+
+    def _record_capture_score(self, event) -> None:
+        """Update authoritative score for a normal or airborne capture."""
+        if event.captured_piece is None:
+            return
+
+        if event.captured_piece.state != PieceState.CAPTURED:
+            victim = event.piece
+            capturer = event.captured_piece
+        else:
+            victim = event.captured_piece
+            capturer = event.piece
+
+        self._game_state.add_score(capturer.color, _PIECE_VALUES[victim.kind])
 
     @property
     def game_over(self):

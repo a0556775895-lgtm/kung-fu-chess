@@ -1,6 +1,6 @@
 # אוסף רשומות מהלכים לכל צד — GameObserver, לא נוגע בציור.
 """Tracks every completed move, per color, for the moves log HUD.
-Subscribes as a GameObserver like ScoreData; MovesLogRenderer reads
+Subscribes as a GameObserver; MovesLogRenderer reads
 white_entries/black_entries off this each frame.
 
 Timestamps use the same dt_ms clock domain as the rest of the view

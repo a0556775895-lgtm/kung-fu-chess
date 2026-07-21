@@ -6,7 +6,7 @@
 
 | שלב | שקף | דרישה מדויקת |
 |---|---|---|
-| A | 2 | Pub/sub bus. שימוש בבאס עבור: עדכון ניקוד, עדכון לוג מהלכים, סאונד, אנימציות התחלה/סיום משחק |
+| A | 2 | Pub/sub bus עבור לוג מהלכים, סאונד ואנימציות; הניקוד הסמכותי נשמר במנוע ונשלח ב-snapshot |
 | B | 3 | שרת מקומי יחיד-תהליך, תקשורת WebSocket. שליחת פקודות (בדוגמת `WQe2e5`); קבלת מצב משחק |
 | C | 4 | מסך בית: login עם שם משתמש בלבד (shell, לא GUI). רק 2 שחקנים — הראשון לבן, השני שחור |
 | D | 5 | login עם שם משתמש+סיסמה (shell), נשמר ב-SQLite בצד השרת. דירוג החל מ-1200, מתעדכן ב-ELO |
@@ -162,7 +162,7 @@ kung-fu-chess/
                     ◀─────────────────────────────┴──────────────────────────▶
 NetworkClient מקבל                                                    NetworkClient מקבל
 → RemoteGameEngineProxy.wait() מפרסם מחדש על bus מקומי
-→ PieceAnimator/ScoreData/SoundPlayer מגיבים (זהה למצב hot-seat)
+→ PieceAnimator/SoundPlayer מגיבים; ScoreRenderer קורא את הניקוד מה-snapshot
 → render_snapshot מצייר
 ```
 
@@ -171,7 +171,7 @@ NetworkClient מקבל                                                    Networ
 ## 5. שלבי המימוש
 
 ### שלב A — Bus (שקף 2)
-- `bus/event_bus.py`: `subscribe(type, handler)`, `publish(event)`, `subscribe_all(observer)` — האחרון עוטף רישום ישן-סגנון (`on_motion_started`/`on_jump_started`/`on_arrival`/`on_game_over`) כך ש-`PieceAnimator`/`ScoreData`/`MovesLogData` **לא משתנים בלוגיקה שלהם כלל**.
+- `bus/event_bus.py`: `subscribe(type, handler)`, `publish(event)`, `subscribe_all(observer)` — האחרון עוטף רישום ישן-סגנון (`on_motion_started`/`on_jump_started`/`on_arrival`/`on_game_over`) עבור `PieceAnimator` ו-`MovesLogData`. הניקוד נשמר במנוע ומוצג מתוך ה-snapshot.
 - `engine/events.py`: דאטהקלאסים `MotionStarted`/`JumpStarted`/`Arrival`/`GameStarted`/`GameOver`.
 - `engine/game_engine.py`: `self._observers=[]` → `self._bus = EventBus()`; כל לולאת `for observer in self._observers` → `self._bus.publish(...)`; `subscribe()` → `self._bus.subscribe_all(observer)`; `bus` property חדש; `start_game()` חדש שמפרסם `GameStarted()`.
 - `view/display_manager.py`: אחרי ה-subscribe הקיימים — `game_engine.start_game()` + subscribe ל-`SoundPlayer`.
@@ -185,7 +185,7 @@ NetworkClient מקבל                                                    Networ
 | תת-שלב | סטטוס | תוצאה |
 |---|---|---|
 | B1 — חוזי Snapshot ופרוטוקול | הושלם ואושר | `engine/snapshot.py`, ‏`GameSnapshotSerializer`, פרוטוקול `MOVE`/`JUMP`/`STATE`/`EVENT`; כל 139 הבדיקות עוברות |
-| B2 — ליבת ניהול משחק בשרת | הושלם ואושר | `ConnectionContext`, ‏`GameRegistry`, ‏`Match`, ‏`GameController` ו-`ServerBroadcaster`; בידוד משחקים והרשאות נבדקו; כל 153 הבדיקות עוברות |
+| B2 — ליבת ניהול משחק בשרת | הושלם ואושר | `ConnectionContext`, ‏`GameRegistry`, ‏`Match`, ‏`GameController` ו-`ServerBroadcaster`; בידוד משחקים והרשאות נבדקו; הניקוד הועבר למצב הסמכותי ומופץ ב-snapshot; כל 157 הבדיקות עוברות |
 | B3 — שרת WebSocket ולולאת tick | ממתין | טרם מומש |
 | B4 — לקוח רשת ושילוב בתצוגה | ממתין | טרם מומש |
 | B5 — בדיקות אינטגרציה והרשאות | ממתין | טרם מומש |

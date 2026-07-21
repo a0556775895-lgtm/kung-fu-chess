@@ -2,16 +2,14 @@ from ... import config
 
 
 class ScoreRenderer:
-    """Draws each side's score in its HUD panel. Pulls the numbers from
-    ScoreData (memory only) — never computes or touches capture logic itself."""
+    """Draw each side's authoritative snapshot score in its HUD panel."""
 
     _MARGIN_X = 16
     _LABEL_Y = 40
     _SCORE_Y = 80
 
-    def __init__(self, score_data, geometry):
-        """Store the score data source and board geometry used to place each panel's text."""
-        self._score_data = score_data
+    def __init__(self, geometry):
+        """Store the board geometry used to place each panel's text."""
         self._geometry = geometry
 
     def render(self, canvas, snapshot) -> None:
@@ -24,8 +22,8 @@ class ScoreRenderer:
         left_x = config.SCORE_LEFT_TEXT_X
         right_x = self._geometry.board_origin_x + self._geometry.window_width + self._MARGIN_X
 
-        self._draw_side(canvas, left_x, "White", self._score_data.white_score)
-        self._draw_side(canvas, right_x, "Black", self._score_data.black_score)
+        self._draw_side(canvas, left_x, "White", snapshot.scores["w"])
+        self._draw_side(canvas, right_x, "Black", snapshot.scores["b"])
 
     def _draw_side(self, canvas, x, label, score) -> None:
         """Draw one side's label and score, stacked vertically at x."""

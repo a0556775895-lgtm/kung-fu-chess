@@ -78,7 +78,7 @@ Mouse click → `Controller.handle_click` (or `view/input/commands.py` `ClickCom
 
 ### Observer pattern
 
-`GameEngine.subscribe(observer)` lets view components listen for game events (`on_arrival`, `on_motion_started`, `on_jump_started`, `on_game_over`) without the engine knowing anything about animation, drawing, or the HUD. `PieceAnimator` and `ScoreData` (in `view/`) are both just external observers, not part of the engine.
+`GameEngine.subscribe(observer)` lets view components listen for game events (`on_arrival`, `on_motion_started`, `on_jump_started`, `on_game_over`) without the engine knowing anything about animation, drawing, or the HUD. `PieceAnimator` and `MovesLogData` are external observers. Capture scoring is authoritative engine state and the HUD reads it from `GameSnapshot.scores`.
 
 ### RealTimeArbiter timing/collision rules (`realtime/real_time_arbiter.py`)
 

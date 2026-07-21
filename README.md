@@ -68,7 +68,7 @@ view      — לוח, כלים, אנימציה, קלט עכבר, HUD — כל מ
 
 **זרימת מהלך טיפוסית:** קליק עכבר → `Controller`/`GameEngine.request_move` → `RuleEngine` מאמת חוקיות → `RealTimeArbiter` מתזמן תנועה → ב-`GameEngine.wait()` בכל frame מתקדם הזמן, ותנועות שהגיעו נפתרות (כולל תפיסות/קפיצות).
 
-**Observer pattern:** `GameEngine.subscribe(observer)` מאפשר לרכיבי ה-view "להאזין" לאירועי משחק (`on_arrival`, `on_motion_started`, `on_jump_started`, `on_game_over`) בלי שהמנוע יֵדע דבר על אנימציה, ציור או HUD. כך, למשל, האנימציה (`PieceAnimator`), הניקוד (`ScoreData`) ויומן המהלכים (`MovesLogData`) הם רק "מאזינים" חיצוניים — לא חלק מהמנוע עצמו.
+**Observer pattern:** `GameEngine.subscribe(observer)` מאפשר לרכיבי ה-view "להאזין" לאירועי משחק (`on_arrival`, `on_motion_started`, `on_jump_started`, `on_game_over`) בלי שהמנוע יֵדע דבר על אנימציה או ציור. האנימציה (`PieceAnimator`) ויומן המהלכים (`MovesLogData`) הם מאזינים חיצוניים. הניקוד הוא מצב סמכותי של המנוע, וה-HUD רק קורא אותו מתוך `GameSnapshot.scores`.
 
 **שני "פנים" לאותו core:** `main.py` מריץ ממשק גרפי (OpenCV) דרך `DisplayManager`, בעוד `texttests/` מריץ בדיוק אותם `Controller`/`GameEngine` בלי שום ממשק גרפי, דרך DSL טקסטואלי (`click x y` / `wait ms` / `print board`) — הוכחה שהליבה (model/rules/realtime/engine) לא תלויה כלל באופן התצוגה.
 
