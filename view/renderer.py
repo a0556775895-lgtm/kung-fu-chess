@@ -1,26 +1,7 @@
 """Text rendering from GameSnapshot — never from live Board or Piece objects."""
 
-from dataclasses import dataclass
-from typing import List, Optional
 from boardio.board_printer import print_board
-
-
-@dataclass
-class PieceSnapshot:
-    id: str
-    kind: str
-    color: str
-    cell: object
-    state: str
-
-
-@dataclass
-class GameSnapshot:
-    board_width: int
-    board_height: int
-    pieces: List[PieceSnapshot]
-    selected_cell: object
-    game_over: bool
+from engine.snapshot import GameSnapshot, PieceSnapshot
 
 
 def render_snapshot(snapshot) -> None:

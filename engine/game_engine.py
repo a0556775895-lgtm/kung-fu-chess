@@ -21,7 +21,7 @@ from model.piece import PieceState
 from realtime.real_time_arbiter import RealTimeArbiter
 from rules.rule_engine import RuleEngine
 from rules import piece_rules
-from view.renderer import render_snapshot, GameSnapshot, PieceSnapshot
+from engine.snapshot import GameSnapshot, PieceSnapshot
 
 logger = logging.getLogger(__name__)
 
