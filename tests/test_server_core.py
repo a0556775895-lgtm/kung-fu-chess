@@ -1,3 +1,5 @@
+"""In-memory integration tests across server routing, matches and broadcasting."""
+
 import asyncio
 
 import pytest
@@ -5,14 +7,15 @@ import pytest
 from boardio.board_parser import BoardParser
 from engine.game_engine import GameEngine
 from model.piece import PieceColor
-from server.connection import ConnectionContext, ConnectionRole
-from server.controller import GameController
-from server.game_registry import GameRegistry
-from server.match import Match
-from server.protocol import decode_event, decode_state, parse_command_response
+from networking.protocol import decode_event, decode_state, parse_command_response
+from server.game.controller import GameController
+from server.game.game_registry import GameRegistry
+from server.game.match import Match
+from server.transport.connection import ConnectionContext, ConnectionRole
 
 
 def make_engine():
+    """Build a minimal legal board used independently by each test Match."""
     return GameEngine(BoardParser.parse([
         ".  .  .  .  bK .  .  .",
         ".  .  .  .  .  .  .  .",
@@ -26,6 +29,7 @@ def make_engine():
 
 
 def make_context(connection_id, game_id, color=PieceColor.WHITE, role=ConnectionRole.PLAYER, maxsize=256):
+    """Build a connection with a configurable bounded queue for backpressure tests."""
     return ConnectionContext(
         connection_id=connection_id,
         game_id=game_id,
@@ -36,6 +40,7 @@ def make_context(connection_id, game_id, color=PieceColor.WHITE, role=Connection
 
 
 def setup_match(game_id="game-1"):
+    """Wire a registry, isolated Match and one authorized white connection."""
     registry = GameRegistry()
     match = Match(game_id, make_engine())
     registry.add(match)
@@ -45,6 +50,7 @@ def setup_match(game_id="game-1"):
 
 
 def drain(context):
+    """Read all currently queued messages without starting an async writer."""
     messages = []
     while not context.outbound.empty():
         messages.append(context.outbound.get_nowait())

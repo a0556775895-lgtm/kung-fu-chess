@@ -36,8 +36,8 @@
 ```
 
 - **Presentation** (`client/`, `view/`, `input/`): שולח פקודות טקסט, מציג מה שהתקבל. אפס לוגיקת משחק.
-- **Controller** (`server/controller.py`, **חדש**): מקבל הודעה מפוענחת (`server/protocol.py`) ומנתבת לשירות ה-BLL הנכון, **בהקשר של משחק ספציפי** (ראו סעיף 10 — לא ניתוב גלובלי), ומחזירה תגובה מיידית. **שונה מ-`input/controller.py` הקיים** (Controller של קלט-משתמש בצד הלקוח) — שני מושגים שונים באותו שם נפוץ, לא כפילות, ו-`input/controller.py` לא זז ולא משתנה.
-- **BLL** — **החלטה מתוקנת**: `model/`, `rules/`, `realtime/`, `boardio/`, `engine/` **נשארים במקומם המקורי בשורש הפרויקט, ללא שום שינוי בתוכן או ב-imports הקיימים שלהם**. `server/` מייבא מהם ישירות (`from engine.game_engine import GameEngine`, `from model.board import Board` וכו'). **אין תיקיית `server/bll/`.** התיעוד (כאן, וב-README אם רלוונטי) מסביר בפרוזה שהמודולים האלה מהווים את שכבת ה-BLL של השרת מבחינת תפקיד, גם בלי שם-תיקייה פורמלי. הלוגיקה העסקית *החדשה* (`server/auth.py`, `server/elo.py`, `server/matchmaker.py`, `server/rooms.py`) יושבת ישירות תחת `server/`, לצד ה-Controller/DAL — גם היא BLL מבחינה תפקודית, גם בלי קיבוץ תיקייתי נפרד.
+- **Controller** (`server/game/controller.py`, **חדש**): מקבל הודעה שפוענחה בעזרת `networking/protocol.py` ומנתב אותה לשירות ה-BLL הנכון, **בהקשר של משחק ספציפי** (ראו סעיף 10 — לא ניתוב גלובלי), ומחזיר תגובה מיידית. **שונה מ-`input/controller.py` הקיים** (Controller של קלט-משתמש בצד הלקוח) — שני מושגים שונים באותו שם נפוץ, לא כפילות, ו-`input/controller.py` לא זז ולא משתנה.
+- **BLL** — **החלטה מתוקנת**: `model/`, `rules/`, `realtime/`, `boardio/`, `engine/` **נשארים במקומם המקורי בשורש הפרויקט, ללא שינוי מיקום**. `server/` מייבא מהם ישירות (`from engine.game_engine import GameEngine`, `from model.board import Board` וכו'). **אין תיקיית `server/bll/`.** הלוגיקה העסקית החדשה (`auth`, ‏`elo`, ‏`matchmaker`, ‏`rooms`) תרוכז תחת `server/services/`; זו שכבת שירותי שרת, בעוד חוקי המשחק המשותפים נשארים ניטרליים בשורש.
   **הנימוק לשינוי**: מעביר תוכן/מיקום פיזי לתיקיות אחרות דורש עדכון import בכל קובץ קיים שנוגע בהן — `input/controller.py`, `texttests/`, `tests/test_suite.py`, `tests/integration/`, `tools/`. זה מגדיל את שטח הפגיעה לרגרסיות בלי תועלת אמיתית, כשההפרדה הלוגית כבר קיימת (המודולים כבר headless ונקיים). ייבוא ישיר מ-`server/` אל השורש משיג את אותה הפרדת אחריות בלי הזזה.
 - **DAL** (`server/dal/`, **חדש**): גישה טהורה ל-SQLite, אפס כללים עסקיים.
 - **DTO** (`server/dto.py` + `engine/snapshot.py`): אובייקטים פשוטים להעברת נתונים בין שכבות/ברשת (`UserDTO`, `GameSnapshot`/`PieceSnapshot`).
@@ -77,36 +77,28 @@ kung-fu-chess/
 │   └── event_bus.py                    [חדש שלב A] EventBus: subscribe/publish/subscribe_all
 │
 ├── networking/                       [חדש B] חוזי תעבורה משותפים, ללא I/O וללא חוקי משחק
+│   ├── protocol.py                     [חדש B] קידוד/פענוח MOVE/JUMP/STATE/EVENT — משותף לצדדים
 │   └── snapshot_serializer.py          [חדש B] GameSnapshotSerializer: JSON ↔ GameSnapshot,
 │                                           כולל ולידציית schema/version ובדיקת round-trip
 │
-├── server/                           [חדש] Controller + DAL + תהליך השרת — מייבא מ-model/rules/
-│   │                                    realtime/boardio/engine ישירות (import בלבד, שום דבר לא זז)
-│   ├── controller.py                  [חדש B] GameController — מפענח הודעה, מנתב **לפי game_id**
-│   │                                     ל-Match/GameEngine הנכון + לשירותי BLL אחרים
-│   ├── protocol.py                    [חדש B] קידוד/פענוח "WQe2e5" ופקודות טקסט נוספות — פונקציות
-│   │                                     טהורות, בלי תלות ב-websockets, משותפות לקידוד/פענוח
-│   ├── game_registry.py               [חדש B] רישום המשחקים הפעילים: dict[game_id, Match] —
-│   │                                     ראו סעיף 10; משמש גם ב-B (משחק קבוע יחיד) וגם E/F
-│   │                                     (משחקים דינמיים מ-matchmaker/rooms), בלי לשנות ממשק
-│   ├── broadcaster.py                 [חדש B] ServerBroadcaster — **אחד per Match**, מנוי רק על
-│   │                                     ה-bus של אותו משחק, משדר רק לחיבורי אותו משחק/חדר
-│   ├── match.py                       [חדש B] Match — חיבורי WS + engine + broadcaster של משחק אחד
-│   ├── game_server.py                 [חדש B] websockets.serve(...); ב-B יוצר משחק קבוע אחד דרך
-│   │                                     game_registry; מ-E/F והלאה — יוצר משחקים דינמית
+├── server/                           [חדש] תהליך השרת — מייבא מהליבה המשותפת ישירות
+│   ├── game/                          [חדש B] ניהול והרשאות של משחקים
+│   │   ├── controller.py                GameController — מנתב **לפי game_id** ל-Match הנכון
+│   │   ├── game_registry.py             dict[game_id, Match], למשחק קבוע ב-B ודינמי ב-E/F
+│   │   └── match.py                     engine + connections + sequence של משחק מבודד אחד
+│   ├── transport/                     [חדש B] גבול ה-I/O של השרת
+│   │   ├── connection.py                ConnectionContext + תור יוצא מוגבל
+│   │   ├── broadcaster.py               ServerBroadcaster אחד per Match
+│   │   └── game_server.py               [חדש B3] websockets.serve(...), Reader/Writer
+│   ├── services/                      [חדש D–F] auth/elo/matchmaker/rooms
+│   ├── dal/                           [חדש D] Data Access Layer — אפס כללים עסקיים
+│   │   ├── database.py                  חיבור sqlite3 + init_schema()
+│   │   └── repository.py                UserRepository + GameRepository
 │   ├── logging_config.py              [חדש F] לוגים מובנים עם game_id/request_id/user_id,
 │   │                                     קובץ מתחלף נפרד לכל משחק וסגירת handler בניקוי Match
 │   ├── config.py                      [חדש B] TICK_MS, PORT, ELO_K, DISCONNECT_GRACE_S, MATCH_TIMEOUT_S
 │   ├── main.py                        [חדש B] נקודת כניסה: python -m server.main
-│   │
-│   ├── dto.py                         [חדש D] UserDTO (GameSnapshot/PieceSnapshot כבר DTO משלהם)
-│   ├── dal/                           [חדש D] Data Access Layer — אפס כללים עסקיים
-│   │   ├── database.py                  חיבור sqlite3 + init_schema()
-│   │   └── repository.py                UserRepository + GameRepository (get/create/update/record)
-│   ├── auth.py                        [חדש D] register/login, קורא ל-server/dal/ בלבד
-│   ├── elo.py                         [חדש D] compute_elo(...) — פונקציה טהורה
-│   ├── matchmaker.py                  [חדש E] התאמת יריבים לפי טווח דירוג, יוצר Match חדש ב-registry
-│   └── rooms.py                       [חדש F] ניהול חדרים/צופים, יוצר Match חדש ב-registry
+│   └── dto.py                         [חדש D] UserDTO (GameSnapshot/PieceSnapshot כבר DTO משלהם)
 │
 ├── input/                            קיים — Controller של קלט-משתמש (לא BLL, לא ה-Controller החדש)
 │   ├── controller.py                  ללא שינוי (Board עדיין מ-model, אין import חדש כי model/ לא זז)
@@ -193,16 +185,16 @@ NetworkClient מקבל                                                    Networ
 | תת-שלב | סטטוס | תוצאה |
 |---|---|---|
 | B1 — חוזי Snapshot ופרוטוקול | הושלם ואושר | `engine/snapshot.py`, ‏`GameSnapshotSerializer`, פרוטוקול `MOVE`/`JUMP`/`STATE`/`EVENT`; כל 139 הבדיקות עוברות |
-| B2 — ליבת ניהול משחק בשרת | ממתין לאישור | טרם מומש |
+| B2 — ליבת ניהול משחק בשרת | הושלם ואושר | `ConnectionContext`, ‏`GameRegistry`, ‏`Match`, ‏`GameController` ו-`ServerBroadcaster`; בידוד משחקים והרשאות נבדקו; כל 153 הבדיקות עוברות |
 | B3 — שרת WebSocket ולולאת tick | ממתין | טרם מומש |
 | B4 — לקוח רשת ושילוב בתצוגה | ממתין | טרם מומש |
 | B5 — בדיקות אינטגרציה והרשאות | ממתין | טרם מומש |
 
 - **אין הזזת קבצים**: `model/rules/realtime/boardio/engine` נשארים בשורש. `server/` מייבא מהם ישירות. `pytest tests/` נשאר ירוק לאורך כל השלב הזה בלי שינוי import אחד בבדיקות הקיימות.
 - **תכנון למשחקים מקבילים כבר בשלב זה** (המימוש בפועל של יצירה דינמית נשאר ב-E/F, אבל הממשק נבנה כך מההתחלה כדי לא לדרוש מבנה-מחדש בהמשך):
-  - `server/game_registry.py`: `dict[game_id, Match]`. ב-B — `GameServer` יוצר משחק קבוע יחיד ורושם אותו ב-registry עם `game_id` קבוע (למשל `"default"`), רק כדי לספק את הדרישה הפשוטה של השקף (2 לקוחות, משחק אחד). אבל שום קוד לא מניח "יש בדיוק משחק אחד" — הניתוב תמיד עובר דרך ה-registry.
-  - `server/controller.py`: כל מתודה מקבלת `game_id` (או `connection` שכבר יודע לאיזה `game_id` הוא שייך, מוקצה ב-`game_server.py` בזמן החיבור) — לא Singleton גלובלי של `engine`.
-  - `server/broadcaster.py`: **מופע אחד per Match**, לא מופע גלובלי יחיד — נבנה ונרשם על ה-bus כשה-`Match` נוצר, משדר רק ל-connections השייכים לאותו `game_id`.
+  - `server/game/game_registry.py`: `dict[game_id, Match]`. ב-B — `GameServer` יוצר משחק קבוע יחיד ורושם אותו ב-registry עם `game_id` קבוע (למשל `"default"`), רק כדי לספק את הדרישה הפשוטה של השקף (2 לקוחות, משחק אחד). אבל שום קוד לא מניח "יש בדיוק משחק אחד" — הניתוב תמיד עובר דרך ה-registry.
+  - `server/game/controller.py`: כל מתודה מקבלת `game_id` (או `connection` שכבר יודע לאיזה `game_id` הוא שייך, מוקצה ב-`game_server.py` בזמן החיבור) — לא Singleton גלובלי של `engine`.
+  - `server/transport/broadcaster.py`: **מופע אחד per Match**, לא מופע גלובלי יחיד — נבנה ונרשם על ה-bus כשה-`Match` נוצר, משדר רק ל-connections השייכים לאותו `game_id`.
 - פרוטוקול טקסט (שורה=הודעה), תואם לדוגמה מהשקף:
 
   | כיוון | תבנית | דוגמה |
@@ -216,13 +208,13 @@ NetworkClient מקבל                                                    Networ
 - **פורמט המהלך נשמר בהתאם לדרישה** (`WQe2e5` / `BNe4`). עם זאת, הצבע וסוג הכלי שמופיעים בהודעה אינם מקור סמכות: השרת מאמת אותם מול החיבור, הצבע שהוקצה לו והכלי שנמצא בפועל במשבצת המקור. לקוח אינו יכול להזיז כלי של היריב באמצעות שינוי הטקסט.
 - לכל בקשת לקוח יוצמד `request_id`, שיוחזר ב-`OK`/`ERR`, כדי שאפשר יהיה לשייך תשובה לפקודה גם כשכמה הודעות נמצאות בתנועה במקביל.
 - כל `STATE`/`EVENT` יכלול `game_id`, מספר `sequence` עולה ו-`server_time_ms`. הלקוח יתעלם מהודעות ישנות או כפולות. פקודות המהלך נשארות בפורמט הטקסט הנדרש; payload מורכב של `STATE`/`EVENT` יישלח כ-JSON בתוך מעטפת טקסט, במקום פורמט לוח עמום.
-- `networking/snapshot_serializer.py` הוא המקור היחיד לפורמט ה-JSON של `STATE`: הוא מבצע המרה דו-כיוונית, כולל `schema_version`, ולידציית שדות ו-round-trip. `server/protocol.py` עוטף את ה-JSON במעטפת הטקסט בלבד; השרת והלקוח אינם מרכיבים payload ידנית.
+- `networking/snapshot_serializer.py` הוא המקור היחיד לפורמט ה-JSON של `STATE`: הוא מבצע המרה דו-כיוונית, כולל `schema_version`, ולידציית שדות ו-round-trip. `networking/protocol.py` עוטף את ה-JSON במעטפת הטקסט בלבד; השרת והלקוח אינם מרכיבים payload ידנית.
 - `STATE` הוא snapshot מלא שמספיק לחיבור באמצע משחק או לחיבור מחדש. הוא כולל: כלים ומצביהם, תנועה פעילה (מקור/יעד/זמן הגעה), זמני נחיתה ומנוחה, ניקוד, מצב משחק, מנצח, תפקיד הלקוח וזמן השרת.
 - לכל חיבור נשמר `ConnectionContext`: `user_id`, `session_token`, `game_id`, `role` (`PLAYER`/`SPECTATOR`) ו-`color`. ה-Controller בודק הרשאה לפני כל `MOVE`/`JUMP`, בנוסף לבדיקת חוקיות המהלך ב-BLL.
 
-- `server/match.py`: לולאת קליטה לכל חיבור (מעבירה ל-Controller עם ה-`game_id` שלה) + לולאת טיק (`engine.wait(TICK_MS)` כל 50ms — תחליף ללולאת ה-`cv2`, אחת per Match).
+- `server/game/match.py`: לולאת קליטה לכל חיבור (מעבירה ל-Controller עם ה-`game_id` שלה) + לולאת טיק (`engine.wait(TICK_MS)` כל 50ms — תחליף ללולאת ה-`cv2`, אחת per Match).
 - לולאת הטיק משתמשת בשעון מונוטוני ומעבירה ל-`engine.wait(...)` את הזמן שעבר בפועל, ולא מניחה שכל סיבוב ארך בדיוק 50ms. כך עומס רגעי בשרת לא ייצור drift בזמן המשחק.
-- `server/game_server.py`: `websockets.serve(...)`, מקצה `game_id` לחיבור (ב-B: תמיד "default"), חיבור ראשון=White, שני=Black (מספיק לדרישת שלב C).
+- `server/transport/game_server.py`: `websockets.serve(...)`, מקצה `game_id` לחיבור (ב-B: תמיד "default"), חיבור ראשון=White, שני=Black (מספיק לדרישת שלב C).
 - `client/network_client.py`: thread נפרד + asyncio (כי `cv2.waitKey` חוסם וצריך thread ראשי) + `queue.Queue` יוצא/נכנס.
 - `EventBus.publish()` נשאר סינכרוני ואינו מבצע `await websocket.send()`. ה-Broadcaster מכניס הודעות לתור יוצא מוגבל לכל חיבור, ומשימת writer אסינכרונית שולחת אותן. לקוח איטי אינו רשאי לחסום את ה-GameEngine או לקוחות אחרים.
 - `client/remote_game_engine_proxy.py` + `client/snapshot_board_view.py`: מתחזים ל-`GameEngine`/`Board` כך ש-`Controller`/`DisplayManager` הקיימים לא זזים בלוגיקה.
@@ -237,22 +229,22 @@ NetworkClient מקבל                                                    Networ
 ### שלב D — סיסמה + SQLite + ELO (שקף 5)
 - `server/dal/database.py`: `sqlite3` + `init_schema()` — טבלאות `users(id, username UNIQUE, password_hash, salt, rating DEFAULT 1200, created_at)`, `games(id, white_user_id, black_user_id, winner_color, ratings before/after, started_at, ended_at)`.
 - `server/dal/repository.py`: `UserRepository.get_by_username/create_user/update_rating` (מחזיר `UserDTO`), `GameRepository.record_game`.
-- `server/auth.py`: `register`/`login` — מגבב (`hashlib.pbkdf2_hmac`+`secrets.token_hex` salt), קורא ל-`server/dal/`, **לא נוגע ב-SQL**.
-- `server/elo.py`: `compute_elo(rating_a, rating_b, score_a, k=32)` — נוסחה סטנדרטית, פונקציה טהורה.
-- `server/controller.py`: מטפל גם ב-`LOGIN <user> <pass>`/`REGISTER`.
-- **שינוי BLL קטן**: `GameEngine` לא מדווח היום מי ניצח. מוסיף `winner_color` property (Protocol `on_game_over()` לא משתנה) — `server/match.py` קורא לזה בסיום, מזין ל-`elo.compute_elo` ואז ל-DAL.
+- `server/services/auth.py`: `register`/`login` — מגבב (`hashlib.pbkdf2_hmac`+`secrets.token_hex` salt), קורא ל-`server/dal/`, **לא נוגע ב-SQL**.
+- `server/services/elo.py`: `compute_elo(rating_a, rating_b, score_a, k=32)` — נוסחה סטנדרטית, פונקציה טהורה.
+- `server/game/controller.py`: מטפל גם ב-`LOGIN <user> <pass>`/`REGISTER`.
+- **שינוי BLL קטן**: `GameEngine` לא מדווח היום מי ניצח. מוסיף `winner_color` property (Protocol `on_game_over()` לא משתנה) — `server/game/match.py` קורא לזה בסיום, מזין ל-`elo.compute_elo` ואז ל-DAL.
 - תוצאת משחק היא אובייקט מפורש הכולל `winner_color`, סיבה (`KING_CAPTURE`/`RESIGN`/`DISCONNECT`) וזמן סיום. כל מסלולי הסיום עוברים דרך `Match.finish(result)` אידמפוטנטי, כדי ששמירת המשחק ועדכון ELO יתבצעו פעם אחת בלבד ובטרנזקציה אחת.
 
 ### שלב E — Matchmaking + ניתוקים (שקף 6)
-- `server/matchmaker.py`: `find_or_wait(player)` — התאמה בטווח ±100; אם לא — `asyncio.sleep` עד 60 שניות ואז `MATCH TIMEOUT`. בדיקת timeout מבודדת בפונקציה טהורה (`has_timed_out`) לבדיקה בלי `sleep` אמיתי. עם התאמה — **יוצר `Match` חדש ורושם אותו ב-`game_registry`** (כאן, לראשונה, ה-registry מקבל יותר ממשחק אחד בפועל).
-- ניתוק: `server/match.py` תופס `ConnectionClosed`, פותח טיימר 20 שניות, משדר `EVENT DISCONNECT <sec>` (מוגבל לאותו משחק), ואם חולף — קורא ל-`GameEngine.resign(color)` (חדש, מקביל ל"מלך נתפס").
+- `server/services/matchmaker.py`: `find_or_wait(player)` — התאמה בטווח ±100; אם לא — `asyncio.sleep` עד 60 שניות ואז `MATCH TIMEOUT`. בדיקת timeout מבודדת בפונקציה טהורה (`has_timed_out`) לבדיקה בלי `sleep` אמיתי. עם התאמה — **יוצר `Match` חדש ורושם אותו ב-`game_registry`** (כאן, לראשונה, ה-registry מקבל יותר ממשחק אחד בפועל).
+- ניתוק: `server/game/match.py` תופס `ConnectionClosed`, פותח טיימר 20 שניות, משדר `EVENT DISCONNECT <sec>` (מוגבל לאותו משחק), ואם חולף — קורא ל-`GameEngine.resign(color)` (חדש, מקביל ל"מלך נתפס").
 - זיהוי ניתוק נעשה באמצעות ping/pong של WebSocket ו-timeout, ולא באמצעות קידום זמן משחק בצד הלקוח. הלקוח עובר בין `CONNECTED`/`UNSTABLE`/`DISCONNECTED`/`RECONNECTING`, חוסם פקודות משחק כשהקשר אבד ומציג את מצב החיבור.
 - login מוצלח מחזיר `session_token` זמני. בתוך חלון החסד הלקוח שולח `RECONNECT <session_token>`; השרת משייך את החיבור החדש לאותו משתמש, Match וצבע, מבטל resign ושולח snapshot מלא.
 - `view/hud/countdown/`: ספירה לאחור על המסך.
 
 ### שלב F — חדרים + צופים + לוגים (שקף 7)
 - `client/room_dialog.py`: חלון Tkinter (Entry + Create/Join/Cancel), רץ ומסתיים **לפני** פתיחת ה-OpenCV.
-- `server/rooms.py`: `create_room()` (מזהה קצר) → יוצר=White, **יוצר `Match` חדש ב-`game_registry`**; `join_room(id, player)` → שני=Black, כל הבא=צופה (חסום מ-MOVE/JUMP, מקבל STATE/EVENT של אותו `game_id`).
+- `server/services/rooms.py`: `create_room()` (מזהה קצר) → יוצר=White, **יוצר `Match` חדש ב-`game_registry`**; `join_room(id, player)` → שני=Black, כל הבא=צופה (חסום מ-MOVE/JUMP, מקבל STATE/EVENT של אותו `game_id`).
 - השרת מנהל מצב משתמש מפורש (`OFFLINE`/`LOBBY`/`QUEUED`/`IN_GAME`/`SPECTATING`) כדי למנוע כניסה כפולה לתור, התאמה לשני משחקים או משחק וצפייה במקביל.
 - מזהה חדר "בראש המסך": `view/hud/room_banner/` — בנר בתוך קנבס ה-OpenCV.
 - לוגים: `server/main.py`→`server.log`; `client/main.py`→`client_<username>.log` (נקבע אחרי login, כדי ששני לקוחות מקומיים לא ידרסו קובץ זה של זה).
@@ -280,16 +272,16 @@ NetworkClient מקבל                                                    Networ
 
 ## 8. קבצים קריטיים למימוש
 
-- `engine/game_engine.py`, `server/controller.py`, `server/protocol.py`, `server/game_registry.py`, `server/broadcaster.py` (ליבת השלב הרשתי, כולל בידוד בין משחקים)
+- `engine/game_engine.py`, `server/game/controller.py`, `networking/protocol.py`, `server/game/game_registry.py`, `server/transport/broadcaster.py` (ליבת השלב הרשתי, כולל בידוד בין משחקים)
 - `view/display_manager.py`, `view/renderer.py`
 - `main.py` (root), `client/local_session.py`
-- `input/controller.py` (ללא שינוי בפועל — לא להתבלבל עם `server/controller.py` החדש)
+- `input/controller.py` (ללא שינוי בפועל — לא להתבלבל עם `server/game/controller.py` החדש)
 - `server/dal/repository.py`, `server/dto.py`
 - `tests/test_suite.py`, `texttests/` — נשארים ירוקים לאורך כל התהליך בלי עדכון import (כי BLL לא זז)
 
 ## 9. נקודות שהנחתי / חריגות מודעות — נא לאשר/לתקן
 
-- **חריגה מודעת בשכבתיות**: `client/local_session.py` (מצב hot-seat מקומי) עוקף לגמרי את שכבת ה-Controller ומדבר ישירות מול ה-BLL (`engine.game_engine.GameEngine`) — באותו תהליך, בלי socket, בלי `server/protocol.py`, בלי `server/controller.py`. זה **מכוון**, לא פספוס: המטרה היא ששחקן יחיד/hot-seat לא יזדקק לתהליך שרת נפרד כדי לשחק. אך זו בהחלט חריגה מעקרון "כל בקשה עוברת Controller" שמוחל בנתיב הרשתי — מתועד כאן במפורש כדי שלא "יתגלה" כהפתעה בסקירת קוד.
+- **חריגה מודעת בשכבתיות**: `client/local_session.py` (מצב hot-seat מקומי) עוקף לגמרי את שכבת ה-Controller ומדבר ישירות מול ה-BLL (`engine.game_engine.GameEngine`) — באותו תהליך, בלי socket, בלי `networking/protocol.py`, בלי `server/game/controller.py`. זה **מכוון**, לא פספוס: המטרה היא ששחקן יחיד/hot-seat לא יזדקק לתהליך שרת נפרד כדי לשחק. אך זו בהחלט חריגה מעקרון "כל בקשה עוברת Controller" שמוחל בנתיב הרשתי — מתועד כאן במפורש כדי שלא "יתגלה" כהפתעה בסקירת קוד.
 - פורמט ההודעות הלא-move (login/room/play/state) — הדרישות נותנות רק דוגמת move (`WQe2e5`); שאר הפורמט (`LOGIN`, `ROOM CREATE`, `STATE ...`) הוא הרחבה סבירה באותו סגנון טקסטואלי, לא כתוב במפורש בשקפים.
 - "Room" ב-Create מושיב את היוצר כ-White מיד (לא רק שומר מזהה) — סביר לפי "the second person that joins... is Black", אך לא נאמר מפורש מה קורה ליוצר.
 - חלון ה-Room (שקף 7) הוא Tkinter (טקסט+3 כפתורים) — לא ctypes MessageBox פשוט, כי צריך תיבת טקסט וגם 3 כפתורים מותאמים.
@@ -327,7 +319,7 @@ NetworkClient מקבל                                                    Networ
 | שלב | סטטוס נוכחי | קריטריוני השלמה מרכזיים |
 |---|---|---|
 | A — Bus | הושלם | כל אירועי המשחק עוברים ב-EventBus; צרכני ה-View והצלילים פועלים; בדיקות היחידה והרגרסיה ירוקות |
-| B — Network | בתהליך — B1 הושלם ואושר | שני לקוחות מסונכרנים מול שרת סמכותי; serializer עובר round-trip; הרשאות צבע ו-request_id תקינים; אין דליפת אירועים בין משחקים; בדיקות ישנות ו-round-trip אמיתי ירוקות |
+| B — Network | בתהליך — B1–B2 הושלמו ואושרו | שני לקוחות מסונכרנים מול שרת סמכותי; serializer עובר round-trip; הרשאות צבע ו-request_id תקינים; אין דליפת אירועים בין משחקים; בדיקות ישנות ו-round-trip אמיתי ירוקות |
 | C — Username Login | ממתין | login בשם משתמש, הקצאת White/Black והודעת `server_full` מאומתים מקצה לקצה |
 | D — Auth + SQLite + ELO | ממתין | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
 | E — Matchmaking + Disconnect | ממתין | התאמה בטווח ±100 ו-timeout; reconnect בחלון 20 שניות; countdown ו-auto-resign נבדקו |

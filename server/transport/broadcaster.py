@@ -1,11 +1,14 @@
 """Convert one Match's domain events into non-blocking outbound messages."""
 
 from engine.events import Arrival, GameOver, GameStarted, JumpStarted, MotionStarted
-from server.protocol import encode_event
+from networking.protocol import encode_event
 
 
 class ServerBroadcaster:
+    """Per-match adapter from synchronous domain events to bounded client queues."""
+
     def __init__(self, game_id, bus, connections, next_sequence, server_time_ms):
+        """Subscribe only to the bus and connection provider of one Match."""
         self._game_id = game_id
         self._connections = connections
         self._next_sequence = next_sequence
@@ -19,6 +22,7 @@ class ServerBroadcaster:
         ]
 
     def close(self) -> None:
+        """Cancel all EventBus subscriptions when the Match is destroyed."""
         for cancel in self._cancellations:
             cancel()
         self._cancellations.clear()

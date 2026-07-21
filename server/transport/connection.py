@@ -9,12 +9,16 @@ from model.piece import PieceColor
 
 
 class ConnectionRole(str, Enum):
+    """Authorization role assigned to a connection inside one match."""
+
     PLAYER = "PLAYER"
     SPECTATOR = "SPECTATOR"
 
 
 @dataclass
 class ConnectionContext:
+    """All identity, routing and backpressure state associated with one client."""
+
     connection_id: str
     game_id: str
     role: ConnectionRole

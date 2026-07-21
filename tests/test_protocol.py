@@ -1,8 +1,10 @@
+"""Unit tests for the shared text protocol and its request correlation."""
+
 import pytest
 
 from engine.snapshot import GameSnapshot, PieceSnapshot
 from model.position import Position
-from server.protocol import (
+from networking.protocol import (
     JumpCommand,
     MoveCommand,
     ProtocolError,

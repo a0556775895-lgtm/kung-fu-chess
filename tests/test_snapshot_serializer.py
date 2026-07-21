@@ -1,3 +1,5 @@
+"""Round-trip and validation tests for the versioned snapshot wire schema."""
+
 import json
 
 import pytest

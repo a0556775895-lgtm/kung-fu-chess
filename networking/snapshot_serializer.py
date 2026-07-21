@@ -19,6 +19,7 @@ class GameSnapshotSerializer:
 
     @staticmethod
     def to_dict(snapshot: GameSnapshot) -> dict[str, Any]:
+        """Convert a snapshot to the versioned, JSON-compatible wire schema."""
         return {
             "schema_version": SCHEMA_VERSION,
             "board": {
@@ -60,6 +61,7 @@ class GameSnapshotSerializer:
 
     @classmethod
     def to_json(cls, snapshot: GameSnapshot) -> str:
+        """Encode a snapshot as compact deterministic JSON."""
         return json.dumps(
             cls.to_dict(snapshot),
             ensure_ascii=False,
@@ -69,6 +71,7 @@ class GameSnapshotSerializer:
 
     @staticmethod
     def from_dict(payload: dict[str, Any]) -> GameSnapshot:
+        """Validate a decoded payload and reconstruct the snapshot value objects."""
         try:
             if not isinstance(payload, dict):
                 raise SnapshotSerializationError("SNAPSHOT_NOT_OBJECT")
@@ -124,6 +127,7 @@ class GameSnapshotSerializer:
 
     @classmethod
     def from_json(cls, payload: str) -> GameSnapshot:
+        """Decode JSON and reject malformed or unsupported snapshot payloads."""
         try:
             decoded = json.loads(payload)
         except (json.JSONDecodeError, TypeError) as exc:

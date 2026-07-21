@@ -7,6 +7,8 @@ from model.position import Position
 
 @dataclass(frozen=True)
 class PieceSnapshot:
+    """Serializable read-only identity, location and lifecycle state of one piece."""
+
     id: str
     kind: str
     color: str
@@ -16,6 +18,8 @@ class PieceSnapshot:
 
 @dataclass(frozen=True)
 class MotionSnapshot:
+    """Authoritative timing and route of one move currently in flight."""
+
     piece_id: str
     source: Position
     destination: Position
@@ -25,6 +29,8 @@ class MotionSnapshot:
 
 @dataclass(frozen=True)
 class GameSnapshot:
+    """Complete client-facing game state, including synchronization metadata."""
+
     board_width: int
     board_height: int
     pieces: list[PieceSnapshot]

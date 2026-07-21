@@ -1,8 +1,7 @@
 """Authorize parsed commands and route them to the correct Match engine."""
 
 from model.piece import PieceColor
-from server.connection import ConnectionRole
-from server.protocol import (
+from networking.protocol import (
     JumpCommand,
     MoveCommand,
     ProtocolError,
@@ -10,13 +9,18 @@ from server.protocol import (
     encode_ok,
     parse_client_command,
 )
+from server.transport.connection import ConnectionRole
 
 
 class GameController:
+    """Server application boundary for parsing, authorization and engine routing."""
+
     def __init__(self, registry):
+        """Route all commands through the supplied multi-match registry."""
         self._registry = registry
 
     def handle_message(self, context, message: str) -> str:
+        """Parse raw client text and always return a correlated OK or ERR response."""
         try:
             command = parse_client_command(message)
         except ProtocolError as exc:
@@ -24,6 +28,7 @@ class GameController:
         return self.handle_command(context, command)
 
     def handle_command(self, context, command) -> str:
+        """Authorize a parsed command and invoke the addressed Match engine."""
         try:
             match = self._registry.get(context.game_id)
         except KeyError:
@@ -48,6 +53,7 @@ class GameController:
 
     @staticmethod
     def _authorize(match, context, command) -> str | None:
+        """Reject forged role, color, source or piece claims before game-rule checks."""
         if not match.has_connection(context):
             return "connection_not_registered"
         if context.role is not ConnectionRole.PLAYER:
