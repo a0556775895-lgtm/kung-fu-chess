@@ -41,6 +41,7 @@
   **הנימוק לשינוי**: מעביר תוכן/מיקום פיזי לתיקיות אחרות דורש עדכון import בכל קובץ קיים שנוגע בהן — `input/controller.py`, `texttests/`, `tests/test_suite.py`, `tests/integration/`, `tools/`. זה מגדיל את שטח הפגיעה לרגרסיות בלי תועלת אמיתית, כשההפרדה הלוגית כבר קיימת (המודולים כבר headless ונקיים). ייבוא ישיר מ-`server/` אל השורש משיג את אותה הפרדת אחריות בלי הזזה.
 - **DAL** (`server/dal/`, **חדש**): גישה טהורה ל-SQLite, אפס כללים עסקיים.
 - **DTO** (`server/dto.py` + `engine/snapshot.py`): אובייקטים פשוטים להעברת נתונים בין שכבות/ברשת (`UserDTO`, `GameSnapshot`/`PieceSnapshot`).
+- **Serialization** (`networking/snapshot_serializer.py`): גבול תעבורה מפורש שממיר `GameSnapshot` ל-JSON ובחזרה. הוא משותף לשרת וללקוח, אינו מכיל חוקי משחק ואינו תלוי ב-WebSocket, כך שפורמט ה-snapshot מוגדר ונבדק במקום יחיד.
 
 **עקרון מנחה: כמה שפחות שינויים**. אף קובץ BLL קיים לא זז ולא נכתב מחדש. קבצי View/Input כמעט ולא זזים. מצב hot-seat ממשיך לעבוד זהה לחלוטין, כי `client/local_session.py` קורא ל-BLL **ישירות באותו תהליך** (בלי socket, בלי Controller/DAL — ראו גם סעיף 9, זו חריגה מודעת לשכבתיות, לא תקלה).
 
@@ -75,6 +76,10 @@ kung-fu-chess/
 ├── bus/                              קיים ברמת השורש — pub/sub גנרי, לא ספציפי-שחמט
 │   └── event_bus.py                    [חדש שלב A] EventBus: subscribe/publish/subscribe_all
 │
+├── networking/                       [חדש B] חוזי תעבורה משותפים, ללא I/O וללא חוקי משחק
+│   └── snapshot_serializer.py          [חדש B] GameSnapshotSerializer: JSON ↔ GameSnapshot,
+│                                           כולל ולידציית schema/version ובדיקת round-trip
+│
 ├── server/                           [חדש] Controller + DAL + תהליך השרת — מייבא מ-model/rules/
 │   │                                    realtime/boardio/engine ישירות (import בלבד, שום דבר לא זז)
 │   ├── controller.py                  [חדש B] GameController — מפענח הודעה, מנתב **לפי game_id**
@@ -89,6 +94,8 @@ kung-fu-chess/
 │   ├── match.py                       [חדש B] Match — חיבורי WS + engine + broadcaster של משחק אחד
 │   ├── game_server.py                 [חדש B] websockets.serve(...); ב-B יוצר משחק קבוע אחד דרך
 │   │                                     game_registry; מ-E/F והלאה — יוצר משחקים דינמית
+│   ├── logging_config.py              [חדש F] לוגים מובנים עם game_id/request_id/user_id,
+│   │                                     קובץ מתחלף נפרד לכל משחק וסגירת handler בניקוי Match
 │   ├── config.py                      [חדש B] TICK_MS, PORT, ELO_K, DISCONNECT_GRACE_S, MATCH_TIMEOUT_S
 │   ├── main.py                        [חדש B] נקודת כניסה: python -m server.main
 │   │
@@ -134,6 +141,7 @@ kung-fu-chess/
     ├── test_suite.py, integration/    ללא שינוי (BLL לא זז — אין import לעדכן)
     ├── test_event_bus.py              [חדש A]
     ├── test_protocol.py               [חדש B] קידוד/פענוח WQe2e5 — פונקציות טהורות
+    ├── test_snapshot_serializer.py    [חדש B] round-trip, schema version ו-payload פגום
     ├── test_game_registry.py          [חדש B] בידוד בין משחקים מקבילים (ראו סעיף 10)
     ├── test_elo.py                    [חדש D]
     ├── test_auth.py / test_repository.py   [חדש D]
@@ -197,6 +205,7 @@ NetworkClient מקבל                                                    Networ
 - **פורמט המהלך נשמר בהתאם לדרישה** (`WQe2e5` / `BNe4`). עם זאת, הצבע וסוג הכלי שמופיעים בהודעה אינם מקור סמכות: השרת מאמת אותם מול החיבור, הצבע שהוקצה לו והכלי שנמצא בפועל במשבצת המקור. לקוח אינו יכול להזיז כלי של היריב באמצעות שינוי הטקסט.
 - לכל בקשת לקוח יוצמד `request_id`, שיוחזר ב-`OK`/`ERR`, כדי שאפשר יהיה לשייך תשובה לפקודה גם כשכמה הודעות נמצאות בתנועה במקביל.
 - כל `STATE`/`EVENT` יכלול `game_id`, מספר `sequence` עולה ו-`server_time_ms`. הלקוח יתעלם מהודעות ישנות או כפולות. פקודות המהלך נשארות בפורמט הטקסט הנדרש; payload מורכב של `STATE`/`EVENT` יישלח כ-JSON בתוך מעטפת טקסט, במקום פורמט לוח עמום.
+- `networking/snapshot_serializer.py` הוא המקור היחיד לפורמט ה-JSON של `STATE`: הוא מבצע המרה דו-כיוונית, כולל `schema_version`, ולידציית שדות ו-round-trip. `server/protocol.py` עוטף את ה-JSON במעטפת הטקסט בלבד; השרת והלקוח אינם מרכיבים payload ידנית.
 - `STATE` הוא snapshot מלא שמספיק לחיבור באמצע משחק או לחיבור מחדש. הוא כולל: כלים ומצביהם, תנועה פעילה (מקור/יעד/זמן הגעה), זמני נחיתה ומנוחה, ניקוד, מצב משחק, מנצח, תפקיד הלקוח וזמן השרת.
 - לכל חיבור נשמר `ConnectionContext`: `user_id`, `session_token`, `game_id`, `role` (`PLAYER`/`SPECTATOR`) ו-`color`. ה-Controller בודק הרשאה לפני כל `MOVE`/`JUMP`, בנוסף לבדיקת חוקיות המהלך ב-BLL.
 
@@ -236,6 +245,7 @@ NetworkClient מקבל                                                    Networ
 - השרת מנהל מצב משתמש מפורש (`OFFLINE`/`LOBBY`/`QUEUED`/`IN_GAME`/`SPECTATING`) כדי למנוע כניסה כפולה לתור, התאמה לשני משחקים או משחק וצפייה במקביל.
 - מזהה חדר "בראש המסך": `view/hud/room_banner/` — בנר בתוך קנבס ה-OpenCV.
 - לוגים: `server/main.py`→`server.log`; `client/main.py`→`client_<username>.log` (נקבע אחרי login, כדי ששני לקוחות מקומיים לא ידרסו קובץ זה של זה).
+- בנוסף, לכל `Match` ייכתב לוג פעילות מתחלף משלו (`logs/games/game_<game_id>.log`) עם `game_id`, ‏`request_id`, ‏`user_id`, סוג אירוע וזמן שרת. ה-handler נסגר עם ניקוי המשחק ונקבעת מדיניות rotation/retention כדי למנוע גדילה בלתי מוגבלת.
 
 ## 6. אסטרטגיית בדיקות
 
@@ -247,6 +257,8 @@ NetworkClient מקבל                                                    Networ
 - בדיקת אינטגרציה אחת (`test_server_roundtrip.py`, שלב B) — שרת+לקוח אמיתיים על localhost.
 - בדיקות נוספות לפרוטוקול והרשאות: לקוח שחור שמתחזה ללבן, צופה ששולח מהלך, הודעה פגומה, `sequence` ישן/כפול ושיוך `request_id` לתגובה.
 - בדיקות מחזור חיים: reconnect בתוך חלון החסד, resign לאחר timeout, סיום משחק אידמפוטנטי, ניקוי Match מה-registry ולקוח איטי שאינו חוסם אחרים.
+- בדיקות serialization: round-trip מלא של snapshot, תאימות `schema_version`, שדות חסרים/payload פגום ושמירה על כל נתוני התנועה, המנוחה, הניקוד והתפקיד.
+- בדיקות עומס וביצועים (`tests/load/` או כלי ייעודי): משחקים מקבילים, צופים רבים, לקוח איטי, burst של פקודות וניקוי משחקים. נאספים לפחות latency ‏p95, סטיית tick, גודל תורים, זיכרון וקצב הודעות. ספי ההצלחה המספריים יוסכמו לפני הרצת בדיקת הקבלה; הבדיקה אינה טוענת לתמיכה באלפי משתמשים על ארכיטקטורת התהליך היחיד.
 - `requirements.txt` חדש: `opencv-python`, `numpy`, `websockets` (מותקן כבר, גרסה 16.0), `pytest`, `pytest-cov`.
 
 ## 7. אימות End-to-End לכל שלב
@@ -296,3 +308,32 @@ NetworkClient מקבל                                                    Networ
 - לפני כל שינוי בקוד יינתן הסבר על השינוי המוצע, הסיבה לו ומקומו בתמונה הכללית, ויידרש אישור מפורש מבעל הפרויקט.
 - שינוי בתיעוד או בקוד יתבצע רק במסגרת שאושרה; אישור לשלב אחד אינו אישור אוטומטי לשלבים הבאים.
 - ההסברים יהיו ברורים ומפורטים מספיק לקבלת החלטה, אך התשובות עצמן יישארו קצרות ותמציתיות ככל האפשר.
+
+## 12. סטטוס וקריטריוני השלמה
+
+סטטוס משתנה ל-`הושלם` רק לאחר שכל קריטריוני הקבלה של השלב עברו ותועדו. יצירת הקבצים לבדה אינה השלמת שלב.
+
+| שלב | סטטוס נוכחי | קריטריוני השלמה מרכזיים |
+|---|---|---|
+| A — Bus | הושלם | כל אירועי המשחק עוברים ב-EventBus; צרכני ה-View והצלילים פועלים; בדיקות היחידה והרגרסיה ירוקות |
+| B — Network | ממתין לאישור/מימוש | שני לקוחות מסונכרנים מול שרת סמכותי; serializer עובר round-trip; הרשאות צבע ו-request_id תקינים; אין דליפת אירועים בין משחקים; בדיקות ישנות ו-round-trip אמיתי ירוקות |
+| C — Username Login | ממתין | login בשם משתמש, הקצאת White/Black והודעת `server_full` מאומתים מקצה לקצה |
+| D — Auth + SQLite + ELO | ממתין | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
+| E — Matchmaking + Disconnect | ממתין | התאמה בטווח ±100 ו-timeout; reconnect בחלון 20 שניות; countdown ו-auto-resign נבדקו |
+| F — Rooms + Spectators + Logs | ממתין | Create/Join/Cancel; שני שחקנים וצופים עם הרשאות נכונות; שני חדרים מבודדים; לוגי שרת/לקוח/משחק נוצרים ונסגרים כראוי |
+
+## 13. קריטריוני Release סופיים
+
+Release מוכן רק כאשר:
+
+- כל שלבים A–F עומדים בקריטריוני ההשלמה שלהם וכל חבילת `pytest tests/` ירוקה.
+- התקנה והרצה מצליחות מ-clone נקי לפי `requirements.txt` ו-README, הן במצב offline והן במצב שרת+שני לקוחות.
+- תרחיש E2E כולל login, משחק, תפיסה, סיום, ELO, reconnect, חדר וצופה עבר ללא התערבות בקוד.
+- שני משחקים מקבילים נשארים מבודדים, ולקוח איטי אינו חוסם את לולאת המשחק או לקוחות אחרים.
+- בדיקות העומס עברו מול ספי הקבלה שסוכמו מראש, ללא גידול זיכרון/תורים בלתי מוגבל וללא drift חריג של שעון המשחק.
+- אין סיסמאות, session tokens או מידע רגיש בלוגים; rotation/retention וניקוי Match נבדקו.
+- התיעוד כולל הוראות התקנה, הרצה, בדיקות, פרוטוקול, מגבלות ידועות וגרסת schema של snapshot.
+
+## 14. הרחבות עתידיות — מחוץ לשלבי החובה
+
+- **Player Profile**: מסך/DTO להצגת שם משתמש, דירוג, היסטוריית משחקים ונתונים מצטברים. יישקל לאחר ששלבים D–F יציבים, כדי לא להרחיב מוקדם את סכמת הנתונים ואת ממשק המשתמש. תוספת זו אינה תנאי ל-Release הנוכחי ולא תמומש ללא תכנון ואישור נפרדים.
