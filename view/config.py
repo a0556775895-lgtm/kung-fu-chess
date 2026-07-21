@@ -5,10 +5,6 @@ from rules.piece_rules import get_airborne_duration
 BOARD_ROWS = 8
 BOARD_COLS = 8
 
-WINDOW_SIZE = (480, 480)      # (width, height) in pixels -- the board itself, not the whole canvas
-FRAME_DELAY_MS = 30           # loop timing - waitKey
-MAX_DT_MS = 100               # clamp - prevents pieces from jumping after the machine stalls
-
 ASSETS_ROOT = Path("view") / "assest" / "pieces"
 BOARD_IMAGE_PATH = Path("view") / "assest" / "board.png"
 BACKGROUND_IMAGE_PATH = Path("view") / "assest" / "background.png"

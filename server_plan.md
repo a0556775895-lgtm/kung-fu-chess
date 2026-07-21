@@ -186,7 +186,10 @@ NetworkClient מקבל                                                    Networ
 |---|---|---|
 | B1 — חוזי Snapshot ופרוטוקול | הושלם ואושר | `engine/snapshot.py`, ‏`GameSnapshotSerializer`, פרוטוקול `MOVE`/`JUMP`/`STATE`/`EVENT`; כל 139 הבדיקות עוברות |
 | B2 — ליבת ניהול משחק בשרת | הושלם ואושר | `ConnectionContext`, ‏`GameRegistry`, ‏`Match`, ‏`GameController` ו-`ServerBroadcaster`; בידוד משחקים והרשאות נבדקו; הניקוד הועבר למצב הסמכותי ומופץ ב-snapshot; כל 157 הבדיקות עוברות |
-| B3 — שרת WebSocket ולולאת tick | ממתין | טרם מומש |
+| B3.1 — בסיס שרת WebSocket | מומש וממתין לאישור | מקור משותף ללוח הפתיחה, `GameServer` עם start/serve/close, נקודת כניסה ותלויות; כל 161 הבדיקות עוברות |
+| B3.2 — ניהול חיבורים ו-Reader/Writer | ממתין | טרם מומש |
+| B3.3 — לולאת tick וסנכרון | ממתין | טרם מומש |
+| B3.4 — אינטגרציית WebSocket אמיתית | ממתין | טרם מומש |
 | B4 — לקוח רשת ושילוב בתצוגה | ממתין | טרם מומש |
 | B5 — בדיקות אינטגרציה והרשאות | ממתין | טרם מומש |
 

@@ -1,6 +1,6 @@
 import cv2
 
-from boardio.board_parser import BoardParser
+from boardio.standard_opening import create_standard_board
 from engine.game_engine import GameEngine
 from input.board_mapper import BoardMapper
 from input.controller import Controller
@@ -22,23 +22,12 @@ from .input.mouse_command_extractor import MouseCommandExtractor
 from .input.commands import LocalCommandSender
 from . import config
 
-STANDARD_OPENING = [
-    "bR bN bB bQ bK bB bN bR",
-    "bP bP bP bP bP bP bP bP",
-    ".  .  .  .  .  .  .  .",
-    ".  .  .  .  .  .  .  .",
-    ".  .  .  .  .  .  .  .",
-    ".  .  .  .  .  .  .  .",
-    "wP wP wP wP wP wP wP wP",
-    "wR wN wB wQ wK wB wN wR",
-]
-
 WINDOW_NAME = "KungFu Chess"
 
 
 class DisplayManager:
     def __init__(self):
-        self._board = BoardParser.parse(STANDARD_OPENING)
+        self._board = create_standard_board()
         self._game_engine = GameEngine(self._board)
 
         self._geometry = BoardGeometry()
