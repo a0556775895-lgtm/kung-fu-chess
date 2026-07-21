@@ -61,6 +61,26 @@ class RealTimeArbiter:
         self._current_time = 0
         self._royal_captured = False
 
+    @property
+    def current_time_ms(self) -> int:
+        """Return the authoritative simulated clock without exposing mutation."""
+        return self._current_time
+
+    @property
+    def active_motions(self) -> tuple[Motion, ...]:
+        """Return an immutable view of motions currently in flight."""
+        return tuple(self._motions.values())
+
+    @property
+    def airborne_until(self) -> dict[str, int]:
+        """Return a copy of authoritative landing deadlines by piece id."""
+        return dict(self._airborne)
+
+    @property
+    def resting_until(self) -> dict[str, int]:
+        """Return a copy of authoritative cooldown deadlines by piece id."""
+        return dict(self._resting)
+
     def has_active_motion(self, piece) -> bool:
         """True if `piece` currently has a Motion in flight."""
         return piece.id in self._motions

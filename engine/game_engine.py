@@ -21,7 +21,7 @@ from model.piece import PieceState
 from realtime.real_time_arbiter import RealTimeArbiter
 from rules.rule_engine import RuleEngine
 from rules import piece_rules
-from engine.snapshot import GameSnapshot, PieceSnapshot
+from engine.snapshot import GameSnapshot, MotionSnapshot, PieceSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -66,19 +66,25 @@ class GameEngine:
         """Start a jump for the piece at source, unless the game is over or the piece is already moving/resting/captured."""
         if self._game_state.game_over:
             logger.info("jump request at %s rejected: game_over", source)
-            return
+            return _MoveResult(False, "game_over")
         piece = self._board.get_piece_at(source)
         if piece is None or piece.is_moving() or piece.is_resting() or piece.state == PieceState.CAPTURED:
+            reason = "empty_source" if piece is None else (
+                "motion_in_progress" if piece.is_moving() else
+                "resting" if piece.is_resting() else
+                "captured"
+            )
             logger.info(
                 "jump request at %s rejected: %s",
                 source,
-                "empty_source" if piece is None else piece.state.name,
+                reason,
             )
-            return
+            return _MoveResult(False, reason)
         self._arbiter.start_jump(piece)
         logger.info("jump started: %s (%s) at %s", piece.id, piece.kind, source)
 
         self._bus.publish(JumpStarted(piece, source))
+        return _MoveResult(True, "ok")
 
     def request_move(self, source, destination):
         """Validate and, if legal, start a move from source to destination; returns a _MoveResult indicating acceptance and reason."""
@@ -153,6 +159,19 @@ class GameEngine:
             pieces=pieces,
             selected_cell=selected_cell,
             game_over=self._game_state.game_over,
+            active_motions=[
+                MotionSnapshot(
+                    piece_id=motion.piece.id,
+                    source=motion.source,
+                    destination=motion.destination,
+                    start_time_ms=motion.start_time,
+                    arrival_time_ms=motion.arrival_time,
+                )
+                for motion in self._arbiter.active_motions
+            ],
+            airborne_until=self._arbiter.airborne_until,
+            resting_until=self._arbiter.resting_until,
+            server_time_ms=self._arbiter.current_time_ms,
         )
 
     @property
