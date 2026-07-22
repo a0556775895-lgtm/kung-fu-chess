@@ -1,4 +1,6 @@
-"""Async WebSocket listener with B3.2b player admission handshake."""
+"""Async WebSocket listener, player connections, and authoritative server tick."""
+
+import asyncio
 
 from websockets.exceptions import ConnectionClosed
 from websockets.asyncio.server import Server, ServerConnection, serve
@@ -8,6 +10,7 @@ from server import config
 from server.game.admission import GameAdmission
 from server.game.controller import GameController
 from server.game.game_registry import GameRegistry
+from server.game.tick_loop import run_tick_loop
 from server.transport.connection_io import run_connection_io
 
 
@@ -18,6 +21,7 @@ class GameServer:
         self._host = host
         self._port = port
         self._server: Server | None = None
+        self._tick_task = None
         self._registry = registry if registry is not None else GameRegistry()
         self._admission = GameAdmission(self._registry)
         self._controller = GameController(self._registry)
@@ -39,6 +43,7 @@ class GameServer:
         if self._server is not None:
             raise RuntimeError("server_already_running")
         self._server = await serve(self._handle_connection, self._host, self._port)
+        self._tick_task = asyncio.create_task(run_tick_loop(self._registry), name="server-tick")
 
     async def serve_forever(self) -> None:
         """Keep an already-started listener alive until it is closed."""
@@ -52,6 +57,11 @@ class GameServer:
             return
         server = self._server
         self._server = None
+        tick_task = self._tick_task
+        self._tick_task = None
+        if tick_task is not None:
+            tick_task.cancel()
+            await asyncio.gather(tick_task, return_exceptions=True)
         server.close()
         await server.wait_closed()
 

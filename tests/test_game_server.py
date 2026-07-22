@@ -6,6 +6,7 @@ import pytest
 from websockets.asyncio.client import connect
 
 from boardio.board_factory import STANDARD_GAME_CONFIG
+from model.position import Position
 from networking.protocol import (
     JoinRequest,
     decode_event,
@@ -77,13 +78,16 @@ def test_game_server_processes_move_through_reader_and_writer():
                 decode_state(await websocket.recv())
 
                 await websocket.send("MOVE move-1 WPe2e3")
-                messages = [await websocket.recv() for _ in range(3)]
+                event_message = state_message = response_message = None
+                while None in (event_message, state_message, response_message):
+                    message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                    if message.startswith("EVENT ") and decode_event(message)["type"] == "MOTION":
+                        event_message = message
+                    elif message.startswith("STATE ") and decode_state(message).active_motions:
+                        state_message = message
+                    elif message.startswith(("OK ", "ERR ")):
+                        response_message = message
 
-                event_message = next(message for message in messages if message.startswith("EVENT "))
-                state_message = next(message for message in messages if message.startswith("STATE "))
-                response_message = next(
-                    message for message in messages if message.startswith(("OK ", "ERR "))
-                )
                 assert decode_event(event_message)["type"] == "MOTION"
                 assert len(decode_state(state_message).active_motions) == 1
                 response = parse_command_response(response_message)
@@ -107,7 +111,10 @@ def test_game_server_returns_error_for_malformed_command_after_join():
 
                 await websocket.send("NOT_A_COMMAND")
 
-                response = parse_command_response(await websocket.recv())
+                message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                while not message.startswith(("OK ", "ERR ")):
+                    message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                response = parse_command_response(message)
                 assert response.accepted is False
                 assert response.request_id == "0"
                 assert response.reason == "MALFORMED_COMMAND"
@@ -131,5 +138,38 @@ def test_game_server_removes_connection_after_websocket_closes():
             await server.close()
 
         assert registry.get("default").connections() == ()
+
+    asyncio.run(scenario())
+
+
+def test_game_server_tick_completes_move_and_sends_arrival_state():
+    async def scenario():
+        server = GameServer(port=0)
+        await server.start()
+        try:
+            async with connect(f"ws://127.0.0.1:{server.bound_port}") as websocket:
+                await websocket.send(encode_join(JoinRequest("join-1", STANDARD_GAME_CONFIG)))
+                await websocket.recv()
+                await websocket.recv()
+                await websocket.send("MOVE timed-move WPe2e3")
+
+                saw_arrival = False
+                saw_final_state = False
+                while not (saw_arrival and saw_final_state):
+                    message = await asyncio.wait_for(websocket.recv(), timeout=2.0)
+                    if message.startswith("EVENT "):
+                        saw_arrival = saw_arrival or decode_event(message)["type"] == "ARRIVAL"
+                    elif message.startswith("STATE "):
+                        state = decode_state(message)
+                        pawn = next(
+                            (piece for piece in state.pieces if piece.cell == Position(5, 4)),
+                            None,
+                        )
+                        saw_final_state = pawn is not None and not state.active_motions
+
+                assert saw_arrival
+                assert saw_final_state
+        finally:
+            await server.close()
 
     asyncio.run(scenario())
