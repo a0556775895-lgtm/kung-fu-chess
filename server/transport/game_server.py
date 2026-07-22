@@ -6,7 +6,9 @@ from websockets.asyncio.server import Server, ServerConnection, serve
 from networking.protocol import ProtocolError, encode_error, parse_join
 from server import config
 from server.game.admission import GameAdmission
+from server.game.controller import GameController
 from server.game.game_registry import GameRegistry
+from server.transport.connection_io import run_connection_io
 
 
 class GameServer:
@@ -18,6 +20,7 @@ class GameServer:
         self._server: Server | None = None
         self._registry = registry if registry is not None else GameRegistry()
         self._admission = GameAdmission(self._registry)
+        self._controller = GameController(self._registry)
 
     @property
     def is_running(self) -> bool:
@@ -70,9 +73,7 @@ class GameServer:
                 return
 
             context = result.context
-            while not context.outbound.empty():
-                await connection.send(context.outbound.get_nowait())
-            await connection.wait_closed()
+            await run_connection_io(context, self._controller)
         except ConnectionClosed:
             pass
         finally:

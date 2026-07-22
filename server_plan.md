@@ -188,8 +188,8 @@ NetworkClient מקבל                                                    Networ
 | B2 — ליבת ניהול משחק בשרת | הושלם ואושר | `ConnectionContext`, ‏`GameRegistry`, ‏`Match`, ‏`GameController` ו-`ServerBroadcaster`; בידוד משחקים והרשאות נבדקו; הניקוד הועבר למצב הסמכותי ומופץ ב-snapshot; כל 157 הבדיקות עוברות |
 | B3.1 — בסיס שרת WebSocket | הושלם ואושר | מקור משותף ללוח הפתיחה, `GameServer` עם start/serve/close, נקודת כניסה ותלויות; כל 161 הבדיקות עברו |
 | B3.2a — חוזה הגדרת משחק | הושלם ואושר | `GameConfig`, serializer, ‏`JOIN`/`CONFIG_ACCEPTED`/`CONFIG_OVERRIDDEN` ו-Board factory שמאשר רק preset קיים; כל 174 הבדיקות עברו |
-| B3.2b — קבלת שחקנים והקצאת צבע | מומש וממתין לאישור | יצירת Match מה-JOIN הראשון, הקצאה אטומית של לבן/שחור, override להגדרת השני, `server_full`, שחרור צבע בניתוק ו-JOIN אמיתי דרך WebSocket; כל 181 הבדיקות עוברות |
-| B3.2c — Reader/Writer | ממתין | טרם מומש |
+| B3.2b — קבלת שחקנים והקצאת צבע | הושלם ואושר | יצירת Match מה-JOIN הראשון, הקצאה אטומית של לבן/שחור, override להגדרת השני, `server_full`, שחרור צבע בניתוק ו-JOIN אמיתי דרך WebSocket; כל 181 הבדיקות עברו |
+| B3.2c — Reader/Writer | מומש וממתין לאישור | Reader מעביר פקודות ל-`GameController`, Writer יחיד שולח מהתור, המשימות נסגרות יחד והחיבור מנוקה; MOVE ו-ERR נבדקו דרך WebSocket אמיתי; כל 185 הבדיקות עוברות |
 | B3.3 — לולאת tick וסנכרון | ממתין | טרם מומש |
 | B3.4 — אינטגרציית WebSocket אמיתית | ממתין | טרם מומש |
 | B4 — לקוח רשת ושילוב בתצוגה | ממתין | טרם מומש |

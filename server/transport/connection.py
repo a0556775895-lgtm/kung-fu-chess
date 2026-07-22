@@ -40,6 +40,7 @@ class ConnectionContext:
         if self.outbound.full():
             try:
                 self.outbound.get_nowait()
+                self.outbound.task_done()
                 self.dropped_messages += 1
             except asyncio.QueueEmpty:  # pragma: no cover - defensive race guard
                 pass
