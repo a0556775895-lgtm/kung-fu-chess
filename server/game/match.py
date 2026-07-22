@@ -9,12 +9,13 @@ from server.transport.broadcaster import ServerBroadcaster
 class Match:
     """Isolate one authoritative engine, sequence stream and connection group."""
 
-    def __init__(self, game_id: str, engine):
+    def __init__(self, game_id: str, engine, game_config=None):
         """Create one game boundary and attach its per-match event broadcaster."""
         if not game_id:
             raise ValueError("INVALID_GAME_ID")
         self.game_id = game_id
         self.engine = engine
+        self.game_config = game_config
         self._connections = {}
         self._sequence = 0
         self.broadcaster = ServerBroadcaster(

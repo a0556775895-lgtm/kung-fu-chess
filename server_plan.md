@@ -187,8 +187,8 @@ NetworkClient מקבל                                                    Networ
 | B1 — חוזי Snapshot ופרוטוקול | הושלם ואושר | `engine/snapshot.py`, ‏`GameSnapshotSerializer`, פרוטוקול `MOVE`/`JUMP`/`STATE`/`EVENT`; כל 139 הבדיקות עוברות |
 | B2 — ליבת ניהול משחק בשרת | הושלם ואושר | `ConnectionContext`, ‏`GameRegistry`, ‏`Match`, ‏`GameController` ו-`ServerBroadcaster`; בידוד משחקים והרשאות נבדקו; הניקוד הועבר למצב הסמכותי ומופץ ב-snapshot; כל 157 הבדיקות עוברות |
 | B3.1 — בסיס שרת WebSocket | הושלם ואושר | מקור משותף ללוח הפתיחה, `GameServer` עם start/serve/close, נקודת כניסה ותלויות; כל 161 הבדיקות עברו |
-| B3.2a — חוזה הגדרת משחק | מומש וממתין לאישור | `GameConfig`, serializer, ‏`JOIN`/`CONFIG_ACCEPTED`/`CONFIG_OVERRIDDEN` ו-Board factory שמאשר רק preset קיים; כל 174 הבדיקות עוברות |
-| B3.2b — קבלת שחקנים והקצאת צבע | ממתין | טרם מומש |
+| B3.2a — חוזה הגדרת משחק | הושלם ואושר | `GameConfig`, serializer, ‏`JOIN`/`CONFIG_ACCEPTED`/`CONFIG_OVERRIDDEN` ו-Board factory שמאשר רק preset קיים; כל 174 הבדיקות עברו |
+| B3.2b — קבלת שחקנים והקצאת צבע | מומש וממתין לאישור | יצירת Match מה-JOIN הראשון, הקצאה אטומית של לבן/שחור, override להגדרת השני, `server_full`, שחרור צבע בניתוק ו-JOIN אמיתי דרך WebSocket; כל 181 הבדיקות עוברות |
 | B3.2c — Reader/Writer | ממתין | טרם מומש |
 | B3.3 — לולאת tick וסנכרון | ממתין | טרם מומש |
 | B3.4 — אינטגרציית WebSocket אמיתית | ממתין | טרם מומש |
