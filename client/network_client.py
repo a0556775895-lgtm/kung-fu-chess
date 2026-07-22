@@ -8,15 +8,30 @@ import uuid
 from websockets.asyncio.client import connect
 
 from boardio.board_factory import STANDARD_GAME_CONFIG
+from networking.login_protocol import (
+    LoginRequest,
+    encode_login,
+    parse_login_response,
+    validate_username,
+)
 from networking.protocol import (
     JoinRequest,
     decode_state,
     encode_join,
+    parse_command_response,
     parse_config_response,
 )
 
 
 _STOP = object()
+
+
+class LoginRejectedError(ConnectionError):
+    """The server refused the requested username during the handshake."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
 
 
 class NetworkClient:
@@ -25,6 +40,7 @@ class NetworkClient:
     def __init__(
         self,
         uri: str,
+        username: str,
         requested_config=STANDARD_GAME_CONFIG,
         *,
         connect_timeout: float = 5.0,
@@ -33,12 +49,14 @@ class NetworkClient:
         """Store connection settings without opening the socket yet."""
         if not isinstance(uri, str) or not uri:
             raise ValueError("INVALID_SERVER_URI")
+        validate_username(username)
         if connect_timeout <= 0:
             raise ValueError("INVALID_CONNECT_TIMEOUT")
         if queue_size <= 0:
             raise ValueError("INVALID_QUEUE_SIZE")
 
         self._uri = uri
+        self._username = username
         self._requested_config = requested_config
         self._connect_timeout = connect_timeout
         self._outgoing = Queue(maxsize=queue_size)
@@ -48,6 +66,7 @@ class NetworkClient:
         self._thread = None
         self._connected = False
         self._failure = None
+        self._login_response = None
         self._config_response = None
         self._initial_state = None
 
@@ -63,6 +82,13 @@ class NetworkClient:
         if self._config_response is None:
             raise RuntimeError("client_not_started")
         return self._config_response
+
+    @property
+    def login_response(self):
+        """Return the identity confirmation received before joining the game."""
+        if self._login_response is None:
+            raise RuntimeError("client_not_started")
+        return self._login_response
 
     @property
     def initial_state(self):
@@ -99,6 +125,8 @@ class NetworkClient:
             raise TimeoutError("client_start_timeout")
         if self.failure is not None:
             thread.join()
+            if isinstance(self.failure, LoginRejectedError):
+                raise LoginRejectedError(self.failure.reason) from self.failure
             raise ConnectionError("client_connection_failed") from self.failure
 
     def send(self, message: str) -> None:
@@ -148,8 +176,22 @@ class NetworkClient:
             self._ready.set()
 
     async def _run_connection(self) -> None:
-        """Perform JOIN, then coordinate the socket reader and single writer."""
+        """Perform LOGIN and JOIN, then coordinate reader and writer tasks."""
         async with connect(self._uri, open_timeout=self._connect_timeout) as websocket:
+            login = LoginRequest(f"login-{uuid.uuid4().hex}", self._username)
+            await websocket.send(encode_login(login))
+            login_message = await asyncio.wait_for(
+                websocket.recv(), timeout=self._connect_timeout
+            )
+            if login_message.startswith("ERR "):
+                response = parse_command_response(login_message)
+                if response.request_id != login.request_id:
+                    raise ConnectionError("login_request_id_mismatch")
+                raise LoginRejectedError(response.reason or "login_rejected")
+            self._login_response = parse_login_response(login_message)
+            if self._login_response.request_id != login.request_id:
+                raise ConnectionError("login_request_id_mismatch")
+
             join = JoinRequest(f"join-{uuid.uuid4().hex}", self._requested_config)
             await websocket.send(encode_join(join))
 

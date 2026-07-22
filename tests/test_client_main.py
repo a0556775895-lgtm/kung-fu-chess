@@ -8,8 +8,9 @@ import client.main as client_main
 class _FakeNetworkClient:
     instances = []
 
-    def __init__(self, uri):
+    def __init__(self, uri, username):
         self.uri = uri
+        self.username = username
         self.started = False
         self.closed = False
         self.is_connected = True
@@ -51,10 +52,11 @@ def test_run_client_composes_remote_display_and_closes_network(monkeypatch):
     monkeypatch.setattr(client_main, "RemoteGameEngineProxy", _FakeProxy)
     monkeypatch.setattr(client_main, "DisplayManager", FakeDisplay)
 
-    client_main.run_client("ws://example.test:9000")
+    client_main.run_client("Alice", "ws://example.test:9000")
 
     network = _FakeNetworkClient.instances[0]
     assert network.uri == "ws://example.test:9000"
+    assert network.username == "Alice"
     assert network.started and network.closed
     assert captured["proxy"].processed == 1
     assert captured["options"]["event_source"] is not captured["proxy"]
@@ -75,6 +77,27 @@ def test_run_client_closes_network_when_display_fails(monkeypatch):
     monkeypatch.setattr(client_main, "DisplayManager", FailingDisplay)
 
     with pytest.raises(RuntimeError, match="display_failed"):
-        client_main.run_client()
+        client_main.run_client("Alice")
 
     assert _FakeNetworkClient.instances[0].closed
+
+
+def test_main_prompts_for_username_before_running_client(monkeypatch):
+    captured = {}
+
+    monkeypatch.setattr(client_main, "prompt_username", lambda: "Alice")
+    monkeypatch.setattr(
+        client_main,
+        "run_client",
+        lambda username, server_uri: captured.update(
+            username=username,
+            server_uri=server_uri,
+        ),
+    )
+
+    client_main.main(["--server", "ws://example.test:9000"])
+
+    assert captured == {
+        "username": "Alice",
+        "server_uri": "ws://example.test:9000",
+    }

@@ -3,7 +3,8 @@
 import argparse
 import logging
 
-from client.network_client import NetworkClient
+from client.cli_login import prompt_username
+from client.network_client import LoginRejectedError, NetworkClient
 from client.network_event_adapter import NetworkEventAdapter
 from client.remote_game_engine_proxy import RemoteGameEngineProxy
 from view.display_manager import DisplayManager
@@ -13,9 +14,9 @@ DEFAULT_SERVER_URI = "ws://127.0.0.1:8765"
 logger = logging.getLogger(__name__)
 
 
-def run_client(server_uri: str = DEFAULT_SERVER_URI) -> None:
+def run_client(username: str, server_uri: str = DEFAULT_SERVER_URI) -> None:
     """Connect, compose the remote game view, and close networking on exit."""
-    network_client = NetworkClient(server_uri)
+    network_client = NetworkClient(server_uri, username)
     network_client.start()
     try:
         proxy = RemoteGameEngineProxy(network_client)
@@ -54,8 +55,11 @@ def main(argv=None) -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    username = prompt_username()
     try:
-        run_client(args.server)
+        run_client(username, args.server)
+    except LoginRejectedError as exc:
+        logger.error("login rejected: %s", exc.reason)
     except KeyboardInterrupt:
         logger.info("client stopped")
 

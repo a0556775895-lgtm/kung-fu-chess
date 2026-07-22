@@ -6,13 +6,13 @@ import pytest
 
 from boardio.board_factory import STANDARD_GAME_CONFIG
 from networking.protocol import decode_event, parse_command_response
-from client.network_client import NetworkClient
+from client.network_client import LoginRejectedError, NetworkClient
 from server.game.game_registry import GameRegistry
 from server.transport.game_server import GameServer
 
 
-async def _start_client(server):
-    client = NetworkClient(f"ws://127.0.0.1:{server.bound_port}")
+async def _start_client(server, username="Alice"):
+    client = NetworkClient(f"ws://127.0.0.1:{server.bound_port}", username)
     await asyncio.to_thread(client.start)
     return client
 
@@ -37,6 +37,7 @@ def test_network_client_completes_join_before_start_returns():
             client = await _start_client(server)
 
             assert client.is_connected
+            assert client.login_response.username == "Alice"
             assert client.config_response.effective_config == STANDARD_GAME_CONFIG
             assert not client.config_response.was_overridden
             assert client.initial_state.assigned_color == "w"
@@ -44,6 +45,31 @@ def test_network_client_completes_join_before_start_returns():
         finally:
             if client is not None:
                 await asyncio.to_thread(client.close)
+            await server.close()
+
+    asyncio.run(scenario())
+
+
+def test_network_client_reports_duplicate_username_rejection():
+    async def scenario():
+        server = GameServer(port=0)
+        await server.start()
+        first = None
+        try:
+            first = await _start_client(server, "Alice")
+            duplicate = NetworkClient(
+                f"ws://127.0.0.1:{server.bound_port}",
+                "alice",
+            )
+
+            with pytest.raises(LoginRejectedError, match="username_taken"):
+                await asyncio.to_thread(duplicate.start)
+
+            assert first.is_connected
+            assert not duplicate.is_connected
+        finally:
+            if first is not None:
+                await asyncio.to_thread(first.close)
             await server.close()
 
     asyncio.run(scenario())
