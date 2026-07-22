@@ -196,7 +196,7 @@ NetworkClient מקבל                                                    Networ
 | B4.2 — Proxy ולוח Snapshot | הושלם ואושר | `SnapshotBoardView` מספק קריאת כלים מה-snapshot האחרון; `RemoteGameEngineProxy` מתרגם MOVE/JUMP, מסנכרן STATE לפי sequence ושומר תשובות ואירועים לצריכת התצוגה; כל 200 הבדיקות עברו |
 | B4.3 — שילוב בתצוגה | הושלם ואושר | `DisplayManager` מקבל מקור משחק ומקור אירועי תצוגה בנפרד; `NetworkEventAdapter` מחזיק EventBus מקומי מחוץ ל-proxy; `client/main.py` מרכיב לקוח גרפי וסוגר את הרשת בבטחה; כל 209 הבדיקות עברו |
 | B4.4 — הרצת שני חלונות גרפיים | הושלם ואושר | שרת ושני לקוחות OpenCV הורצו ידנית, קיבלו לבן/שחור והציגו משחק מסונכרן; שתי נקודות הכניסה נטענות וכל 209 הבדיקות עברו |
-| B5 — בדיקות אינטגרציה והרשאות | מומש וממתין לאישור | חמש בדיקות WebSocket אמיתיות מאמתות חסימת התחזות לצבע, `server_full`, override לקונפיג, שיוך תשובות לפי request_id ודחיית JOIN פגום; כל 214 הבדיקות עוברות |
+| B5 — בדיקות אינטגרציה והרשאות | הושלם ואושר | חמש בדיקות WebSocket אמיתיות מאמתות חסימת התחזות לצבע, `server_full`, override לקונפיג, שיוך תשובות לפי request_id ודחיית JOIN פגום; כל 214 הבדיקות עברו |
 
 - **אין הזזת קבצים**: `model/rules/realtime/boardio/engine` נשארים בשורש. `server/` מייבא מהם ישירות. `pytest tests/` נשאר ירוק לאורך כל השלב הזה בלי שינוי import אחד בבדיקות הקיימות.
 - **תכנון למשחקים מקבילים כבר בשלב זה** (המימוש בפועל של יצירה דינמית נשאר ב-E/F, אבל הממשק נבנה כך מההתחלה כדי לא לדרוש מבנה-מחדש בהמשך):
@@ -231,8 +231,14 @@ NetworkClient מקבל                                                    Networ
 - `client/local_session.py`: בונה BLL ישירות (מקומי) ומריץ `DisplayManager` — `main.py` קורא לכאן. **עוקף את ה-Controller במכוון** (ראו סעיף 9).
 
 ### שלב C — Login שם משתמש בלבד (שקף 4)
-- `client/cli_login.py`: `input("Username: ")`, נשלח כ-`LOGIN <username>` לפני הכל.
+- `client/cli_login.py`: `input("Username: ")`, נשלח כ-`LOGIN <request_id> <username>` לפני הכל.
 - שרת: 2 שחקנים בלבד — חיבור שלישי מקבל `ERR server_full`. שיוך צבע לפי סדר חיבור (כבר קיים משלב B).
+
+| תת-שלב | סטטוס | תוצאה |
+|---|---|---|
+| C1 — חוזה Login ושמות פעילים | הושלם ואושר | `login_protocol.py` מגדיר `LOGIN`/`LOGIN_OK` וולידציית שם נפרדת מפרוטוקול המשחק; `ActiveUserRegistry` שומר שמות פעילים בזיכרון ומונע כפילות ללא תלות באותיות גדולות; כל 240 הבדיקות עברו |
+| C2 — Login לפני JOIN בשרת | ממתין | טרם מומש |
+| C3 — CLI ושילוב בלקוח | ממתין | טרם מומש |
 
 ### שלב D — סיסמה + SQLite + ELO (שקף 5)
 - `server/dal/database.py`: `sqlite3` + `init_schema()` — טבלאות `users(id, username UNIQUE, password_hash, salt, rating DEFAULT 1200, created_at)`, `games(id, white_user_id, black_user_id, winner_color, ratings before/after, started_at, ended_at)`.
@@ -327,8 +333,8 @@ NetworkClient מקבל                                                    Networ
 | שלב | סטטוס נוכחי | קריטריוני השלמה מרכזיים |
 |---|---|---|
 | A — Bus | הושלם | כל אירועי המשחק עוברים ב-EventBus; צרכני ה-View והצלילים פועלים; בדיקות היחידה והרגרסיה ירוקות |
-| B — Network | מומש וממתין לאישור סופי — B1–B5 | שני לקוחות גרפיים מסונכרנים מול שרת סמכותי; serializer עובר round-trip; הרשאות צבע, קיבולת ו-request_id תקינים; אין דליפת אירועים בין משחקים; כל 214 הבדיקות ירוקות |
-| C — Username Login | ממתין | login בשם משתמש, הקצאת White/Black והודעת `server_full` מאומתים מקצה לקצה |
+| B — Network | הושלם ואושר — B1–B5 | שני לקוחות גרפיים מסונכרנים מול שרת סמכותי; serializer עובר round-trip; הרשאות צבע, קיבולת ו-request_id תקינים; אין דליפת אירועים בין משחקים; כל 214 הבדיקות ירוקות |
+| C — Username Login | בתהליך — C1 הושלם ואושר | login בשם משתמש, הקצאת White/Black והודעת `server_full` מאומתים מקצה לקצה |
 | D — Auth + SQLite + ELO | ממתין | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
 | E — Matchmaking + Disconnect | ממתין | התאמה בטווח ±100 ו-timeout; reconnect בחלון 20 שניות; countdown ו-auto-resign נבדקו |
 | F — Rooms + Spectators + Logs | ממתין | Create/Join/Cancel; שני שחקנים וצופים עם הרשאות נכונות; שני חדרים מבודדים; לוגי שרת/לקוח/משחק נוצרים ונסגרים כראוי |
