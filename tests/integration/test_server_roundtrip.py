@@ -6,6 +6,7 @@ from websockets.asyncio.client import connect
 
 from boardio.board_factory import STANDARD_GAME_CONFIG
 from model.position import Position
+from networking.login_protocol import LoginRequest, encode_login, parse_login_response
 from networking.protocol import (
     JoinRequest,
     decode_event,
@@ -19,6 +20,9 @@ from server.transport.game_server import GameServer
 
 async def _join(websocket, request_id):
     """Complete the mandatory handshake and return the initial snapshot."""
+    username = request_id.replace("join", "user")
+    await websocket.send(encode_login(LoginRequest(f"login-{username}", username)))
+    parse_login_response(await websocket.recv())
     await websocket.send(encode_join(JoinRequest(request_id, STANDARD_GAME_CONFIG)))
     config_response = parse_config_response(await websocket.recv())
     initial_state = decode_state(await websocket.recv())

@@ -7,6 +7,7 @@ from websockets.asyncio.client import connect
 from boardio.board_factory import STANDARD_GAME_CONFIG
 from model.game_config import GameConfig
 from model.position import Position
+from networking.login_protocol import LoginRequest, encode_login, parse_login_response
 from networking.protocol import (
     JoinRequest,
     decode_state,
@@ -20,6 +21,9 @@ from server.transport.game_server import GameServer
 
 async def _join(websocket, request_id, requested_config=STANDARD_GAME_CONFIG):
     """Send JOIN and return the server's config decision and initial state."""
+    username = request_id.replace("join", "user")
+    await websocket.send(encode_login(LoginRequest(f"login-{username}", username)))
+    parse_login_response(await websocket.recv())
     await websocket.send(encode_join(JoinRequest(request_id, requested_config)))
     decision = parse_config_response(await websocket.recv())
     state = decode_state(await websocket.recv())
@@ -81,6 +85,10 @@ def test_third_websocket_client_is_rejected_as_server_full():
                 await _join(second, "join-second")
 
                 async with connect(uri) as third:
+                    await third.send(
+                        encode_login(LoginRequest("login-third", "user-third"))
+                    )
+                    parse_login_response(await third.recv())
                     await third.send(encode_join(
                         JoinRequest("join-third", STANDARD_GAME_CONFIG)
                     ))
@@ -144,7 +152,7 @@ def test_interleaved_messages_preserve_command_request_ids():
     asyncio.run(scenario())
 
 
-def test_malformed_initial_join_is_rejected_and_socket_is_closed():
+def test_join_before_login_is_rejected_and_socket_is_closed():
     async def scenario():
         server = GameServer(port=0)
         await server.start()
@@ -157,7 +165,7 @@ def test_malformed_initial_join_is_rejected_and_socket_is_closed():
 
                 assert response.request_id == "0"
                 assert not response.accepted
-                assert response.reason == "malformed_join"
+                assert response.reason == "malformed_login"
                 assert websocket.close_code == 1008
         finally:
             await server.close()

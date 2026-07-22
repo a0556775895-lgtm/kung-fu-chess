@@ -5,24 +5,39 @@ import asyncio
 from websockets.exceptions import ConnectionClosed
 from websockets.asyncio.server import Server, ServerConnection, serve
 
+from networking.login_protocol import (
+    LoginProtocolError,
+    encode_login_ok,
+    parse_login,
+)
 from networking.protocol import ProtocolError, encode_error, parse_join
 from server import config
 from server.game.admission import GameAdmission
 from server.game.controller import GameController
 from server.game.game_registry import GameRegistry
 from server.game.tick_loop import run_tick_loop
+from server.services.active_user_registry import ActiveUserRegistry
 from server.transport.connection_io import run_connection_io
 
 
 class GameServer:
     """Own the WebSocket listener and provide explicit start/stop operations."""
 
-    def __init__(self, host: str = config.HOST, port: int = config.PORT, registry=None):
+    def __init__(
+        self,
+        host: str = config.HOST,
+        port: int = config.PORT,
+        registry=None,
+        active_users=None,
+    ):
         self._host = host
         self._port = port
         self._server: Server | None = None
         self._tick_task = None
         self._registry = registry if registry is not None else GameRegistry()
+        self._active_users = (
+            active_users if active_users is not None else ActiveUserRegistry()
+        )
         self._admission = GameAdmission(self._registry)
         self._controller = GameController(self._registry)
 
@@ -66,26 +81,49 @@ class GameServer:
         await server.wait_closed()
 
     async def _handle_connection(self, connection: ServerConnection) -> None:
-        """Process the initial JOIN handshake; command I/O is added in B3.2c."""
+        """Require LOGIN before JOIN, then run authorized game command I/O."""
         context = None
+        claimed_username = None
         try:
             try:
-                request = parse_join(await connection.recv())
+                login_request = parse_login(await connection.recv())
+            except LoginProtocolError as exc:
+                await connection.send(encode_error("0", str(exc).lower()))
+                await connection.close(code=1008, reason="invalid_login")
+                return
+
+            if not self._active_users.claim(login_request.username):
+                await connection.send(
+                    encode_error(login_request.request_id, "username_taken")
+                )
+                await connection.close(code=1008, reason="username_taken")
+                return
+
+            claimed_username = login_request.username
+            await connection.send(
+                encode_login_ok(login_request.request_id, login_request.username)
+            )
+
+            try:
+                join_request = parse_join(await connection.recv())
             except ProtocolError as exc:
                 await connection.send(encode_error("0", str(exc).lower()))
                 await connection.close(code=1008, reason="invalid_join")
                 return
 
-            result = await self._admission.admit(request, websocket=connection)
+            result = await self._admission.admit(join_request, websocket=connection)
             if not result.is_accepted:
                 await connection.send(result.rejection)
                 await connection.close(code=1008, reason="join_rejected")
                 return
 
             context = result.context
+            context.user_id = claimed_username
             await run_connection_io(context, self._controller)
         except ConnectionClosed:
             pass
         finally:
             if context is not None:
                 self._admission.release(context)
+            if claimed_username is not None:
+                self._active_users.release(claimed_username)
