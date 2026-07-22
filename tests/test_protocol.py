@@ -3,21 +3,28 @@
 import pytest
 
 from engine.snapshot import GameSnapshot, PieceSnapshot
+from model.game_config import GameConfig
 from model.position import Position
 from networking.protocol import (
     JumpCommand,
+    JoinRequest,
     MoveCommand,
     ProtocolError,
     decode_event,
     decode_state,
+    encode_config_accepted,
+    encode_config_overridden,
     encode_error,
     encode_event,
     encode_jump,
+    encode_join,
     encode_move,
     encode_ok,
     encode_state,
     parse_client_command,
     parse_command_response,
+    parse_config_response,
+    parse_join,
 )
 
 
@@ -73,3 +80,43 @@ def test_state_envelope_round_trip():
 def test_event_envelope_round_trip():
     payload = {"type": "GAMEOVER", "game_id": "default", "sequence": 9}
     assert decode_event(encode_event(payload)) == payload
+
+
+def test_join_round_trip():
+    config = GameConfig(1, 8, 8, "standard")
+    request = JoinRequest("join-1", config)
+
+    assert parse_join(encode_join(request)) == request
+
+
+def test_config_accepted_round_trip():
+    config = GameConfig(1, 8, 8, "standard")
+
+    response = parse_config_response(encode_config_accepted("join-1", config))
+
+    assert response.request_id == "join-1"
+    assert response.was_overridden is False
+    assert response.effective_config == config
+
+
+def test_config_overridden_round_trip():
+    effective = GameConfig(1, 8, 8, "standard")
+
+    response = parse_config_response(encode_config_overridden("join-2", effective))
+
+    assert response.was_overridden is True
+    assert response.effective_config == effective
+
+
+@pytest.mark.parametrize(
+    "message,reason",
+    [
+        ("MOVE join-1 {}", "MALFORMED_JOIN"),
+        ("JOIN bad/id {}", "INVALID_REQUEST_ID"),
+        ("JOIN join-1 not-json", "INVALID_GAME_CONFIG_JSON"),
+        ("JOIN join-1 {}", "INVALID_GAME_CONFIG_FIELDS"),
+    ],
+)
+def test_rejects_malformed_join(message, reason):
+    with pytest.raises(ProtocolError, match=reason):
+        parse_join(message)

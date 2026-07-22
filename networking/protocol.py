@@ -6,7 +6,12 @@ import re
 from typing import Any
 
 from engine.snapshot import GameSnapshot
+from model.game_config import GameConfig
 from model.position import Position
+from networking.game_config_serializer import (
+    GameConfigSerializationError,
+    GameConfigSerializer,
+)
 from networking.snapshot_serializer import GameSnapshotSerializer
 
 
@@ -49,7 +54,74 @@ class CommandResponse:
     reason: str | None = None
 
 
+@dataclass(frozen=True)
+class JoinRequest:
+    """A client's request to join using its preferred game configuration."""
+
+    request_id: str
+    requested_config: GameConfig
+
+
+@dataclass(frozen=True)
+class ConfigResponse:
+    """The authoritative configuration selected for a joining client."""
+
+    request_id: str
+    was_overridden: bool
+    effective_config: GameConfig
+
+
 ClientCommand = MoveCommand | JumpCommand
+
+
+def encode_join(request: JoinRequest) -> str:
+    """Encode the mandatory first message sent by a joining client."""
+    _validate_request_id(request.request_id)
+    return f"JOIN {request.request_id} {GameConfigSerializer.to_json(request.requested_config)}"
+
+
+def parse_join(message: str) -> JoinRequest:
+    """Parse a JOIN envelope and validate its requested GameConfig structure."""
+    if not isinstance(message, str):
+        raise ProtocolError("MESSAGE_NOT_TEXT")
+    parts = message.strip().split(maxsplit=2)
+    if len(parts) != 3 or parts[0] != "JOIN":
+        raise ProtocolError("MALFORMED_JOIN")
+    _validate_request_id(parts[1])
+    try:
+        config = GameConfigSerializer.from_json(parts[2])
+    except GameConfigSerializationError as exc:
+        raise ProtocolError(str(exc)) from exc
+    return JoinRequest(parts[1], config)
+
+
+def encode_config_accepted(request_id: str, config: GameConfig) -> str:
+    """Confirm that the client's requested config became authoritative."""
+    return _encode_config_response("CONFIG_ACCEPTED", request_id, config)
+
+
+def encode_config_overridden(request_id: str, config: GameConfig) -> str:
+    """Tell a client to adopt the Match config instead of its preference."""
+    return _encode_config_response("CONFIG_OVERRIDDEN", request_id, config)
+
+
+def parse_config_response(message: str) -> ConfigResponse:
+    """Parse CONFIG_ACCEPTED or CONFIG_OVERRIDDEN with its effective config."""
+    if not isinstance(message, str):
+        raise ProtocolError("MESSAGE_NOT_TEXT")
+    parts = message.strip().split(maxsplit=2)
+    if len(parts) != 3 or parts[0] not in {"CONFIG_ACCEPTED", "CONFIG_OVERRIDDEN"}:
+        raise ProtocolError("MALFORMED_CONFIG_RESPONSE")
+    _validate_request_id(parts[1])
+    try:
+        config = GameConfigSerializer.from_json(parts[2])
+    except GameConfigSerializationError as exc:
+        raise ProtocolError(str(exc)) from exc
+    return ConfigResponse(
+        request_id=parts[1],
+        was_overridden=parts[0] == "CONFIG_OVERRIDDEN",
+        effective_config=config,
+    )
 
 
 def parse_client_command(message: str) -> ClientCommand:
@@ -190,3 +262,8 @@ def position_to_algebraic(position: Position) -> str:
 def _validate_request_id(request_id: str) -> None:
     if not isinstance(request_id, str) or _REQUEST_ID_RE.fullmatch(request_id) is None:
         raise ProtocolError("INVALID_REQUEST_ID")
+
+
+def _encode_config_response(kind: str, request_id: str, config: GameConfig) -> str:
+    _validate_request_id(request_id)
+    return f"{kind} {request_id} {GameConfigSerializer.to_json(config)}"
