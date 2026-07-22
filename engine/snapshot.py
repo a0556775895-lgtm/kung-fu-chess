@@ -40,6 +40,9 @@ class GameSnapshot:
     airborne_until: dict[str, int] = field(default_factory=dict)
     resting_until: dict[str, int] = field(default_factory=dict)
     scores: dict[str, int] = field(default_factory=lambda: {"w": 0, "b": 0})
+    player_names: dict[str, str] = field(
+        default_factory=lambda: {"w": "White", "b": "Black"}
+    )
     winner_color: str | None = None
     server_time_ms: int = 0
     game_id: str | None = None

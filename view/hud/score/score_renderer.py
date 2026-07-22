@@ -22,8 +22,10 @@ class ScoreRenderer:
         left_x = config.SCORE_LEFT_TEXT_X
         right_x = self._geometry.board_origin_x + self._geometry.window_width + self._MARGIN_X
 
-        self._draw_side(canvas, left_x, "White", snapshot.scores["w"])
-        self._draw_side(canvas, right_x, "Black", snapshot.scores["b"])
+        white_name = snapshot.player_names.get("w", "White")
+        black_name = snapshot.player_names.get("b", "Black")
+        self._draw_side(canvas, left_x, white_name, snapshot.scores["w"])
+        self._draw_side(canvas, right_x, black_name, snapshot.scores["b"])
 
     def _draw_side(self, canvas, x, label, score) -> None:
         """Draw one side's label and score, stacked vertically at x."""

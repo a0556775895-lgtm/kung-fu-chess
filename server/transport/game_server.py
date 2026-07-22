@@ -111,14 +111,17 @@ class GameServer:
                 await connection.close(code=1008, reason="invalid_join")
                 return
 
-            result = await self._admission.admit(join_request, websocket=connection)
+            result = await self._admission.admit(
+                join_request,
+                websocket=connection,
+                user_id=claimed_username,
+            )
             if not result.is_accepted:
                 await connection.send(result.rejection)
                 await connection.close(code=1008, reason="join_rejected")
                 return
 
             context = result.context
-            context.user_id = claimed_username
             await run_connection_io(context, self._controller)
         except ConnectionClosed:
             pass

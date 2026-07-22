@@ -7,7 +7,7 @@ from engine.snapshot import GameSnapshot, MotionSnapshot, PieceSnapshot
 from model.position import Position
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class SnapshotSerializationError(ValueError):
@@ -51,6 +51,7 @@ class GameSnapshotSerializer:
             "airborne_until": dict(snapshot.airborne_until),
             "resting_until": dict(snapshot.resting_until),
             "scores": dict(snapshot.scores),
+            "player_names": dict(snapshot.player_names),
             "winner_color": snapshot.winner_color,
             "server_time_ms": snapshot.server_time_ms,
             "game_id": snapshot.game_id,
@@ -113,6 +114,7 @@ class GameSnapshotSerializer:
                 airborne_until=_string_int_dict(payload, "airborne_until"),
                 resting_until=_string_int_dict(payload, "resting_until"),
                 scores=_string_int_dict(payload, "scores"),
+                player_names=_string_str_dict(payload, "player_names"),
                 winner_color=_optional_str(payload, "winner_color"),
                 server_time_ms=_required_int(payload, "server_time_ms"),
                 game_id=_optional_str(payload, "game_id"),
@@ -206,6 +208,18 @@ def _string_int_dict(payload: dict[str, Any], key: str) -> dict[str, int]:
         not isinstance(item_key, str)
         or isinstance(item_value, bool)
         or not isinstance(item_value, int)
+        for item_key, item_value in value.items()
+    ):
+        raise SnapshotSerializationError(f"INVALID_{key.upper()}")
+    return dict(value)
+
+
+def _string_str_dict(payload: dict[str, Any], key: str) -> dict[str, str]:
+    value = _required_dict(payload, key)
+    if any(
+        not isinstance(item_key, str)
+        or not isinstance(item_value, str)
+        or not item_value
         for item_key, item_value in value.items()
     ):
         raise SnapshotSerializationError(f"INVALID_{key.upper()}")

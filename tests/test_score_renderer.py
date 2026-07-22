@@ -24,10 +24,11 @@ def test_score_renderer_reads_scores_from_snapshot():
         selected_cell=None,
         game_over=False,
         scores={"w": 7, "b": 4},
+        player_names={"w": "Alice", "b": "Bob"},
     )
     canvas = _RecordingCanvas()
 
     renderer.render(canvas, snapshot)
 
     rendered_text = [entry[0] for entry in canvas.texts]
-    assert rendered_text == ["White", "7", "Black", "4"]
+    assert rendered_text == ["Alice", "7", "Bob", "4"]

@@ -77,11 +77,17 @@ def test_two_clients_share_one_authoritative_websocket_game():
             async with connect(uri) as white, connect(uri) as black:
                 white_config, white_initial = await _join(white, "join-white")
                 black_config, black_initial = await _join(black, "join-black")
+                white_after_black_joined = decode_state(await white.recv())
 
                 assert not white_config.was_overridden
                 assert not black_config.was_overridden
                 assert white_initial.assigned_color == "w"
                 assert black_initial.assigned_color == "b"
+                assert white_after_black_joined.player_names == {
+                    "w": "user-white",
+                    "b": "user-black",
+                }
+                assert black_initial.player_names == white_after_black_joined.player_names
                 assert _board_signature(white_initial) == _board_signature(black_initial)
 
                 await white.send("MOVE move-white WPe2e3")

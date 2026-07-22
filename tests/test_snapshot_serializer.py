@@ -28,6 +28,7 @@ def make_full_snapshot():
         airborne_until={"black_king": 900},
         resting_until={"white_queen": 5100},
         scores={"w": 3, "b": 1},
+        player_names={"w": "Alice", "b": "Bob"},
         winner_color=None,
         server_time_ms=250,
         game_id="game-7",
@@ -44,7 +45,7 @@ def test_full_snapshot_json_round_trip():
 
 def test_serialized_snapshot_contains_schema_version():
     payload = GameSnapshotSerializer.to_dict(make_full_snapshot())
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
 
 
 def test_rejects_unknown_schema_version():

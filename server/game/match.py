@@ -62,11 +62,20 @@ class Match:
         base = self.engine.snapshot()
         return replace(
             base,
+            player_names=self._player_names(),
             game_id=self.game_id,
             role=context.role.value,
             assigned_color=str(context.color) if context.color is not None else None,
             sequence=self._sequence if sequence is None else sequence,
         )
+
+    def _player_names(self) -> dict[str, str]:
+        """Map assigned colors to display names, retaining labels for empty seats."""
+        names = {"w": "White", "b": "Black"}
+        for connection in self.connections():
+            if connection.color is not None and connection.user_id is not None:
+                names[str(connection.color)] = connection.user_id
+        return names
 
     def send_state(self, context) -> None:
         """Queue a fresh full STATE for one registered connection."""

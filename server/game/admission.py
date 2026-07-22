@@ -46,7 +46,12 @@ class GameAdmission:
         self._connection_id_factory = connection_id_factory or (lambda: uuid.uuid4().hex)
         self._lock = asyncio.Lock()
 
-    async def admit(self, request: JoinRequest, websocket=None) -> AdmissionResult:
+    async def admit(
+        self,
+        request: JoinRequest,
+        websocket=None,
+        user_id: str | None = None,
+    ) -> AdmissionResult:
         """Atomically create/find the Match, assign a free color, and queue initial messages."""
         async with self._lock:
             match = self._get_or_create_match(request)
@@ -70,6 +75,7 @@ class GameAdmission:
                 game_id=match.game_id,
                 role=ConnectionRole.PLAYER,
                 color=color,
+                user_id=user_id,
                 websocket=websocket,
             )
             match.add_connection(context)
@@ -78,7 +84,7 @@ class GameAdmission:
                 context.enqueue(encode_config_accepted(request.request_id, match.game_config))
             else:
                 context.enqueue(encode_config_overridden(request.request_id, match.game_config))
-            match.send_state(context)
+            match.broadcast_state()
             return AdmissionResult(context=context, match=match)
 
     def release(self, context: ConnectionContext) -> None:

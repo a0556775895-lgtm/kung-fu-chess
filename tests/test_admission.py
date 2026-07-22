@@ -62,6 +62,29 @@ def test_second_player_receives_black_and_match_config_override():
     asyncio.run(scenario())
 
 
+def test_second_player_join_broadcasts_both_names_to_both_players():
+    async def scenario():
+        _, admission = _admission_with_predictable_ids()
+        first = await admission.admit(
+            JoinRequest("join-1", STANDARD_GAME_CONFIG),
+            user_id="Alice",
+        )
+        _drain(first.context)
+
+        second = await admission.admit(
+            JoinRequest("join-2", STANDARD_GAME_CONFIG),
+            user_id="Bob",
+        )
+
+        first_state = decode_state(_drain(first.context)[0])
+        _, second_state_message = _drain(second.context)
+        second_state = decode_state(second_state_message)
+        assert first_state.player_names == {"w": "Alice", "b": "Bob"}
+        assert second_state.player_names == {"w": "Alice", "b": "Bob"}
+
+    asyncio.run(scenario())
+
+
 def test_third_player_is_rejected_as_server_full():
     async def scenario():
         _, admission = _admission_with_predictable_ids()

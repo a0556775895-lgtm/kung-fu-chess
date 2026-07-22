@@ -238,7 +238,7 @@ NetworkClient מקבל                                                    Networ
 |---|---|---|
 | C1 — חוזה Login ושמות פעילים | הושלם ואושר | `login_protocol.py` מגדיר `LOGIN`/`LOGIN_OK` וולידציית שם נפרדת מפרוטוקול המשחק; `ActiveUserRegistry` שומר שמות פעילים בזיכרון ומונע כפילות ללא תלות באותיות גדולות; כל 240 הבדיקות עברו |
 | C2 — Login לפני JOIN בשרת | הושלם ואושר | `GameServer` מחייב `LOGIN` לפני `JOIN`, מונע שם פעיל כפול, משייך את השם ל-`ConnectionContext` ומשחרר אותו בכל התנתקות או כשל; 240 בדיקות עברו ו-3 בדיקות הלקוח הישן ממתינות לחיבור `LOGIN` ב-C3 |
-| C3 — CLI ושילוב בלקוח | הושלם ואושר | `cli_login.py` מבקש ומוודא שם משתמש לפני פתיחת המשחק; `NetworkClient` מבצע `LOGIN` וממתין ל-`LOGIN_OK` לפני `JOIN`, ומציג דחיית שם באופן נפרד מתקלה ברשת; כל 247 הבדיקות עברו והזרימה נבדקה ידנית |
+| C3 — CLI ושילוב בלקוח | הושלם ואושר | `cli_login.py` מבקש ומוודא שם משתמש לפני פתיחת המשחק; `NetworkClient` מבצע `LOGIN` לפני `JOIN`; שמות שני השחקנים עוברים ב-snapshot ומוצגים לצד הניקוד במקום White/Black; כל 248 הבדיקות עברו והתצוגה אושרה |
 
 ### שלב D — סיסמה + SQLite + ELO (שקף 5)
 - `server/dal/database.py`: `sqlite3` + `init_schema()` — טבלאות `users(id, username UNIQUE, password_hash, salt, rating DEFAULT 1200, created_at)`, `games(id, white_user_id, black_user_id, winner_color, ratings before/after, started_at, ended_at)`.
@@ -334,7 +334,7 @@ NetworkClient מקבל                                                    Networ
 |---|---|---|
 | A — Bus | הושלם | כל אירועי המשחק עוברים ב-EventBus; צרכני ה-View והצלילים פועלים; בדיקות היחידה והרגרסיה ירוקות |
 | B — Network | הושלם ואושר — B1–B5 | שני לקוחות גרפיים מסונכרנים מול שרת סמכותי; serializer עובר round-trip; הרשאות צבע, קיבולת ו-request_id תקינים; אין דליפת אירועים בין משחקים; כל 214 הבדיקות ירוקות |
-| C — Username Login | הושלם ואושר — C1–C3 | login בשם משתמש, הקצאת White/Black והודעת `server_full` מאומתים מקצה לקצה |
+| C — Username Login | הושלם ואושר — C1–C3 | login בשם משתמש, הקצאת White/Black, הצגת שמות בלוח והודעת `server_full` מאומתים מקצה לקצה |
 | D — Auth + SQLite + ELO | ממתין | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
 | E — Matchmaking + Disconnect | ממתין | התאמה בטווח ±100 ו-timeout; reconnect בחלון 20 שניות; countdown ו-auto-resign נבדקו |
 | F — Rooms + Spectators + Logs | ממתין | Create/Join/Cancel; שני שחקנים וצופים עם הרשאות נכונות; שני חדרים מבודדים; לוגי שרת/לקוח/משחק נוצרים ונסגרים כראוי |
