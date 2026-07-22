@@ -15,10 +15,8 @@ class JumpCommand:
 Command = ClickCommand | JumpCommand
 
 
-class LocalCommandSender:
-    """The only implementation for now: calls the local Controller/GameEngine
-    directly. If multiplayer is ever needed, NetworkCommandSender will
-    replace only this class — without touching the extractor or display_manager."""
+class GameCommandSender:
+    """Route view commands through an injected local engine or remote proxy."""
 
     def __init__(self, controller, game_engine):
         """Store the controller and game engine to dispatch commands to."""
@@ -26,7 +24,7 @@ class LocalCommandSender:
         self._game_engine = game_engine
 
     def send(self, command: Command) -> None:
-        """Route a ClickCommand to the controller or a JumpCommand to the game engine."""
+        """Route left-click selection through Controller and jumps through the game API."""
         match command:
             case ClickCommand(position=position):
                 self._controller.handle_click(position)

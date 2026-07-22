@@ -19,16 +19,47 @@ from .hud.moves_log.moves_log_data import MovesLogData
 from .hud.moves_log.moves_log_renderer import MovesLogRenderer
 from .audio.sound_player import SoundPlayer
 from .input.mouse_command_extractor import MouseCommandExtractor
-from .input.commands import LocalCommandSender
+from .input.commands import GameCommandSender
 from . import config
 
 WINDOW_NAME = "KungFu Chess"
 
 
 class DisplayManager:
-    def __init__(self):
-        self._board = create_standard_board()
-        self._game_engine = GameEngine(self._board)
+    """Own the OpenCV presentation while receiving state from injected services."""
+
+    def __init__(
+        self,
+        board=None,
+        game_engine=None,
+        *,
+        game_updater=None,
+        event_source=None,
+        starts_game=None,
+    ):
+        """Build local mode by default, or use an injected local/remote game source."""
+        local_mode = board is None and game_engine is None
+        if local_mode:
+            board = create_standard_board()
+            game_engine = GameEngine(board)
+        elif board is None or game_engine is None:
+            raise ValueError("BOARD_AND_GAME_ENGINE_REQUIRED")
+
+        if game_updater is None:
+            if not local_mode:
+                raise ValueError("GAME_UPDATER_REQUIRED")
+            game_updater = game_engine.wait
+
+        if event_source is None:
+            if not local_mode:
+                raise ValueError("EVENT_SOURCE_REQUIRED")
+            event_source = game_engine
+
+        self._board = board
+        self._game_engine = game_engine
+        self._game_updater = game_updater
+        self._event_source = event_source
+        self._starts_game = local_mode if starts_game is None else starts_game
 
         self._geometry = BoardGeometry()
         self._background_loader = BackgroundLoader(self._geometry)
@@ -51,16 +82,18 @@ class DisplayManager:
         self._renderers = [self._board_renderer, self._selection_renderer, self._piece_renderer,
                             self._score_renderer, self._moves_log_renderer]
 
-        self._game_engine.subscribe(self._piece_animator)
-        self._game_engine.subscribe(self._moves_log_data)
-        self._sound_player = SoundPlayer(self._game_engine.bus)
+        self._observer_cancellations = [
+            self._event_source.subscribe(self._piece_animator),
+            self._event_source.subscribe(self._moves_log_data),
+        ]
+        self._sound_player = SoundPlayer(self._event_source.bus)
 
         self._board_mapper = BoardMapper(
             self._geometry.rows, self._geometry.cols, cell_size=self._geometry.cell_w
         )
         self._controller = Controller(self._board, self._game_engine, self._board_mapper)
         self._extractor = MouseCommandExtractor(self._board_mapper, self._geometry)
-        self._command_sender = LocalCommandSender(self._controller, self._game_engine)
+        self._command_sender = GameCommandSender(self._controller, self._game_engine)
 
         cv2.namedWindow(WINDOW_NAME)
         cv2.setMouseCallback(WINDOW_NAME, self._on_mouse)
@@ -76,8 +109,9 @@ class DisplayManager:
             self._command_sender.send(command)
 
     def update(self, dt_ms: int) -> None:
-        self._moves_log_data.tick(dt_ms)  # advance before wait() so on_arrival timestamps this frame correctly
-        self._game_engine.wait(dt_ms)
+        """Advance presentation time and ask the injected source for fresh game state."""
+        self._moves_log_data.tick(dt_ms)
+        self._game_updater(dt_ms)
         snapshot = self._game_engine.snapshot(self._controller.selected_position)
         self._piece_animator.update(dt_ms, snapshot)
         self._last_snapshot = snapshot
@@ -89,7 +123,9 @@ class DisplayManager:
         return canvas
 
     def run(self):
-        self._game_engine.start_game()
+        """Run the window loop until Escape, then release presentation resources."""
+        if self._starts_game:
+            self._game_engine.start_game()
         last_time = cv2.getTickCount()
         tick_freq = cv2.getTickFrequency()
 
@@ -108,5 +144,7 @@ class DisplayManager:
                 if key == 27:  # Esc
                     break
         finally:
+            for cancel in self._observer_cancellations:
+                cancel()
             self._sound_player.close()
             cv2.destroyAllWindows()

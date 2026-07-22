@@ -111,6 +111,13 @@ def test_proxy_does_not_send_empty_or_opponent_source():
     assert network.sent == []
 
 
+def test_proxy_does_not_expose_presentation_event_bus():
+    proxy = RemoteGameEngineProxy(_FakeNetworkClient(_snapshot()))
+
+    assert not hasattr(proxy, "bus")
+    assert not hasattr(proxy, "subscribe")
+
+
 def test_proxy_applies_new_state_and_ignores_stale_state():
     initial = _snapshot(sequence=5)
     newest = _snapshot(sequence=7, white_cell=Position(5, 4))
@@ -137,6 +144,15 @@ def test_proxy_correlates_responses_and_queues_ordered_events():
             "game_id": "default",
             "sequence": 2,
             "server_time_ms": 500,
+            "piece": {
+                "id": "white-pawn",
+                "kind": "P",
+                "color": "w",
+                "state": "LONG_REST",
+            },
+            "source": {"row": 6, "col": 4},
+            "destination": {"row": 5, "col": 4},
+            "captured_piece": None,
         }),
     ]
     proxy = RemoteGameEngineProxy(network)

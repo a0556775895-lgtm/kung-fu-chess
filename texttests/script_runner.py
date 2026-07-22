@@ -6,7 +6,7 @@ combined stdout produced by `print board` commands.
 click/wait go through `Controller` exactly like a left-click in the real
 UI. jump bypasses the Controller's selection state and calls
 `GameEngine.request_jump` directly, mirroring how a right-click is
-dispatched in `view/input/commands.py::LocalCommandSender`.
+dispatched in `view/input/commands.py::GameCommandSender`.
 
 A board that fails to parse (`UNKNOWN_TOKEN` / `ROW_WIDTH_MISMATCH`)
 produces a single `ERROR <reason>` line and no commands are run, matching

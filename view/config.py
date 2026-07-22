@@ -5,6 +5,11 @@ from rules.piece_rules import get_airborne_duration
 BOARD_ROWS = 8
 BOARD_COLS = 8
 
+# Local presentation timing and pixel size; these never affect server game rules.
+WINDOW_SIZE = (480, 480)
+FRAME_DELAY_MS = 30
+MAX_DT_MS = 100
+
 ASSETS_ROOT = Path("view") / "assest" / "pieces"
 BOARD_IMAGE_PATH = Path("view") / "assest" / "board.png"
 BACKGROUND_IMAGE_PATH = Path("view") / "assest" / "background.png"
