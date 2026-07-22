@@ -5,7 +5,11 @@ import sqlite3
 import pytest
 
 from server.dal.database import DEFAULT_RATING, connect_database, init_schema
-from server.dal.repository import GameRepository, UserRepository
+from server.dal.repository import (
+    DuplicateUsernameError,
+    GameRepository,
+    UserRepository,
+)
 
 
 @pytest.fixture
@@ -63,7 +67,7 @@ def test_user_repository_rejects_case_variant_duplicate(connection):
     repository = UserRepository(connection)
     _create_user(repository, "Alice")
 
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(DuplicateUsernameError):
         _create_user(repository, "alice")
 
 

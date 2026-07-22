@@ -10,10 +10,10 @@ WINDOW_SIZE = (480, 480)
 FRAME_DELAY_MS = 30
 MAX_DT_MS = 100
 
-ASSETS_ROOT = Path("view") / "assest" / "pieces"
-BOARD_IMAGE_PATH = Path("view") / "assest" / "board.png"
-BACKGROUND_IMAGE_PATH = Path("view") / "assest" / "background.png"
-SIDE_PANEL_IMAGE_PATH = Path("view") / "assest" / "side_panel.png"
+ASSETS_ROOT = Path("view") / "asset" / "pieces"
+BOARD_IMAGE_PATH = Path("view") / "asset" / "board.png"
+BACKGROUND_IMAGE_PATH = Path("view") / "asset" / "background.png"
+SIDE_PANEL_IMAGE_PATH = Path("view") / "asset" / "side_panel.png"
 
 PIECE_KINDS = ("P", "N", "B", "R", "Q", "K")
 PIECE_COLORS = ("W", "B")
@@ -21,8 +21,8 @@ ANIMATION_STATES = ("idle", "move", "jump", "short_rest", "long_rest")
 
 JUMP_DURATION_MS = get_airborne_duration()   # single source of truth: rules.piece_rules
 
-HIGHLIGHT_IMAGE_PATH = Path("view") / "assest" / "highlight.png"
-SOUNDS_ROOT = Path("view") / "assest" / "sounds"
+HIGHLIGHT_IMAGE_PATH = Path("view") / "asset" / "highlight.png"
+SOUNDS_ROOT = Path("view") / "asset" / "sounds"
 
 # HUD: side panels flanking the board, each showing side_panel.png (name
 # plaque on top, log parchment in the middle). Width is derived from that

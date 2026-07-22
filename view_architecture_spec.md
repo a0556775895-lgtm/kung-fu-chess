@@ -55,7 +55,7 @@ engine/
 ## מפרט המודולים
 
 ### `config.py`
-קבועים גלובליים יחידים לכל הפרויקט: `BOARD_ROWS=8`, `BOARD_COLS=8`, `WINDOW_SIZE=(640,640)`, `FRAME_DELAY_MS=30`, `MAX_DT_MS=100`, `ASSETS_ROOT=Path("view")/"assest"/"PIECE3"`, `PIECE_KINDS=("P","N","B","R","Q","K")`, `PIECE_COLORS=("W","B")`, `ANIMATION_STATES=("idle","move","jump","short_rest","long_rest")`. כל שאר הקבצים מייבאים משם — אין ערך קבוע כפול באף מקום אחר.
+קבועים גלובליים יחידים לכל הפרויקט: `BOARD_ROWS=8`, `BOARD_COLS=8`, `WINDOW_SIZE=(640,640)`, `FRAME_DELAY_MS=30`, `MAX_DT_MS=100`, `ASSETS_ROOT=Path("view")/"asset"/"pieces"`, `PIECE_KINDS=("P","N","B","R","Q","K")`, `PIECE_COLORS=("W","B")`, `ANIMATION_STATES=("idle","move","jump","short_rest","long_rest")`. כל שאר הקבצים מייבאים משם — אין ערך קבוע כפול באף מקום אחר.
 
 ### `protocols.py`
 ```python

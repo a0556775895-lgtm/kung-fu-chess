@@ -7,6 +7,10 @@ from server.dal.database import DEFAULT_RATING
 from server.dto import GameDTO, UserDTO
 
 
+class DuplicateUsernameError(ValueError):
+    """The normalized username key is already owned by another account."""
+
+
 class UserRepository:
     """Persist and retrieve user accounts without owning transaction commits."""
 
@@ -23,14 +27,22 @@ class UserRepository:
         """Insert one account and return its database-assigned identity."""
         _require_bytes(password_hash, "INVALID_PASSWORD_HASH")
         _require_bytes(salt, "INVALID_SALT")
-        cursor = self._connection.execute(
-            """
-            INSERT INTO users (username, username_key, password_hash, salt, rating)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (username, _username_key(username), password_hash, salt, rating),
-        )
-        return self.get_by_id(cursor.lastrowid)
+        try:
+            cursor = self._connection.execute(
+                """
+                INSERT INTO users (username, username_key, password_hash, salt, rating)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (username, _username_key(username), password_hash, salt, rating),
+            )
+        except sqlite3.IntegrityError as exc:
+            if self.get_by_username(username) is not None:
+                raise DuplicateUsernameError(username) from exc
+            raise
+        user = self.get_by_id(cursor.lastrowid)
+        if user is None:  # pragma: no cover - defensive database consistency guard
+            raise RuntimeError("CREATED_USER_NOT_FOUND")
+        return user
 
     def get_by_username(self, username: str) -> UserDTO | None:
         """Find an account by its normalized, case-insensitive username."""
@@ -64,7 +76,10 @@ class UserRepository:
         )
         if cursor.rowcount != 1:
             raise KeyError(user_id)
-        return self.get_by_id(user_id)
+        user = self.get_by_id(user_id)
+        if user is None:  # pragma: no cover - defensive database consistency guard
+            raise RuntimeError("UPDATED_USER_NOT_FOUND")
+        return user
 
 
 class GameRepository:
@@ -114,7 +129,10 @@ class GameRepository:
                 ended_at,
             ),
         )
-        return self.get_by_id(cursor.lastrowid)
+        game = self.get_by_id(cursor.lastrowid)
+        if game is None:  # pragma: no cover - defensive database consistency guard
+            raise RuntimeError("CREATED_GAME_NOT_FOUND")
+        return game
 
     def get_by_id(self, game_id: int) -> GameDTO | None:
         """Find one completed game by its stable primary key."""

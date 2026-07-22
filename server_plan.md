@@ -244,8 +244,8 @@ NetworkClient מקבל                                                    Networ
 
 | תת-שלב | סטטוס | תוצאה מתוכננת |
 |---|---|---|
-| D1 — תשתית SQLite ו-Repositories | הושלם ואושר | נוספו סכימת `users`/`games`, חיבור מוזרק, `UserDTO`/`GameDTO` ו-repositories ללא `commit` פנימי; 7 בדיקות D1 עברו מול `:memory:`. בחבילה המלאה 254 בדיקות עברו ובדיקת צלילים אחת נכשלת עקב העברת assets שאינה חלק מ-D1 |
-| D2 — AuthService ואבטחת סיסמאות | ממתין | הרשמה ואימות באמצעות salt ו-`PBKDF2-HMAC`; אין שמירת סיסמה גלויה ואין SQL בתוך השירות |
+| D1 — תשתית SQLite ו-Repositories | הושלם ואושר | נוספו סכימת `users`/`games`, חיבור מוזרק, `UserDTO`/`GameDTO` ו-repositories ללא `commit` פנימי; 7 בדיקות D1 עברו מול `:memory:` |
+| D2 — AuthService ואבטחת סיסמאות | הושלם ואושר | `AuthService` מבצע הרשמה ואימות עם PBKDF2-HMAC-SHA256, ‏600,000 iterations, ‏salt אקראי ו-compare_digest; `SqliteUnitOfWork` מנהל commit/rollback ואין SQL בשירות. כל 14 בדיקות D2 עברו וכל 269 בדיקות הפרויקט ירוקות לאחר תיקון נתיב הנכסים |
 | D3 — פרוטוקול Register/Login ושילוב בלקוח | ממתין | חוזה רשת ייעודי, handshake מול `GameServer` ובחירה בין הרשמה לכניסה לפני `JOIN` |
 | D4 — תוצאת משחק מפורשת | ממתין | אובייקט תוצאה עם מנצח, סיבת סיום וזמן; כל מסלולי הסיום מתנקזים ל-`Match.finish()` פעם אחת |
 | D5 — חישוב ELO | ממתין | פונקציה טהורה ומבודדת לחישוב דירוגים חדשים, עם דירוג התחלתי 1200 ובדיקות יחידה |
@@ -348,7 +348,7 @@ NetworkClient מקבל                                                    Networ
 | A — Bus | הושלם | כל אירועי המשחק עוברים ב-EventBus; צרכני ה-View והצלילים פועלים; בדיקות היחידה והרגרסיה ירוקות |
 | B — Network | הושלם ואושר — B1–B5 | שני לקוחות גרפיים מסונכרנים מול שרת סמכותי; serializer עובר round-trip; הרשאות צבע, קיבולת ו-request_id תקינים; אין דליפת אירועים בין משחקים; כל 214 הבדיקות ירוקות |
 | C — Username Login | הושלם ואושר — C1–C3 | login בשם משתמש, הקצאת White/Black, הצגת שמות בלוח והודעת `server_full` מאומתים מקצה לקצה |
-| D — Auth + SQLite + ELO | בתהליך — D1 הושלם ואושר | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
+| D — Auth + SQLite + ELO | בתהליך — D1–D2 הושלמו ואושרו | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
 | E — Matchmaking + Disconnect | ממתין | התאמה בטווח ±100 ו-timeout; reconnect בחלון 20 שניות; countdown ו-auto-resign נבדקו |
 | F — Rooms + Spectators + Logs | ממתין | Create/Join/Cancel; שני שחקנים וצופים עם הרשאות נכונות; שני חדרים מבודדים; לוגי שרת/לקוח/משחק נוצרים ונסגרים כראוי |
 

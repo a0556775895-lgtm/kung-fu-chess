@@ -9,5 +9,5 @@ img[:, :, 1] = 220   # G
 img[:, :, 2] = 255   # R  -> צהוב-זהוב ב-BGR
 img[:, :, 3] = 90    # alpha - שקיפות חלקית (0-255)
 
-cv2.imwrite("view/assest/highlight.png", img)
-print("נוצר: view/assest/highlight.png")
+cv2.imwrite("view/asset/highlight.png", img)
+print("נוצר: view/asset/highlight.png")
