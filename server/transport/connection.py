@@ -1,5 +1,5 @@
 """Identity, authorization and bounded outbound state for one connection."""
-
+"""מכיל את זהות החיבור,מבדיל בין צופה או שחקן, ומכיל את התור היוצא"""
 import asyncio
 from dataclasses import dataclass, field
 from enum import Enum
@@ -23,7 +23,8 @@ class ConnectionContext:
     game_id: str
     role: ConnectionRole
     color: PieceColor | None = None
-    user_id: str | None = None
+    user_id: int | None = None
+    username: str | None = None
     session_token: str | None = None
     websocket: Any = field(default=None, repr=False, compare=False)
     outbound: asyncio.Queue[str] = field(

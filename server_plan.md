@@ -78,6 +78,7 @@ kung-fu-chess/
 │
 ├── networking/                       [חדש B] חוזי תעבורה משותפים, ללא I/O וללא חוקי משחק
 │   ├── protocol.py                     [חדש B] קידוד/פענוח MOVE/JUMP/STATE/EVENT — משותף לצדדים
+│   ├── auth_protocol.py                [חדש D] REGISTER/LOGIN/AUTH_OK וולידציית חוזה האימות
 │   └── snapshot_serializer.py          [חדש B] GameSnapshotSerializer: JSON ↔ GameSnapshot,
 │                                           כולל ולידציית schema/version ובדיקת round-trip
 │
@@ -90,10 +91,11 @@ kung-fu-chess/
 │   │   ├── connection.py                ConnectionContext + תור יוצא מוגבל
 │   │   ├── broadcaster.py               ServerBroadcaster אחד per Match
 │   │   └── game_server.py               [חדש B3] websockets.serve(...), Reader/Writer
-│   ├── services/                      [חדש D–F] auth/elo/matchmaker/rooms
+│   ├── services/                      [חדש D–F] auth/active_user_registry/elo/matchmaker/rooms
 │   ├── dal/                           [חדש D] Data Access Layer — אפס כללים עסקיים
 │   │   ├── database.py                  חיבור sqlite3 + init_schema()
-│   │   └── repository.py                UserRepository + GameRepository
+│   │   ├── repository.py                UserRepository + GameRepository
+│   │   └── unit_of_work.py               commit/rollback וסגירת חיבור בבעלות הפעולה
 │   ├── logging_config.py              [חדש F] לוגים מובנים עם game_id/request_id/user_id,
 │   │                                     קובץ מתחלף נפרד לכל משחק וסגירת handler בניקוי Match
 │   ├── config.py                      [חדש B] TICK_MS, PORT, ELO_K, DISCONNECT_GRACE_S, MATCH_TIMEOUT_S
@@ -124,7 +126,7 @@ kung-fu-chess/
 │   ├── network_client.py              [חדש B] חיבור WS ברקע (thread+queues)
 │   ├── remote_game_engine_proxy.py    [חדש B] מתחזה ל-GameEngine, מתרגם ל/מ-הודעות רשת
 │   ├── snapshot_board_view.py         [חדש B] מתחזה ל-Board מעל ה-snapshot האחרון
-│   ├── cli_login.py                   [חדש C/D] קלט שם משתמש/סיסמה בשורת פקודה
+│   ├── cli_auth.py                    [חדש D] בחירת Register/Login וקלט סיסמה מוסתר
 │   └── room_dialog.py                 [חדש F] חלון Tkinter (טקסט + Create/Join/Cancel)
 │
 ├── texttests/                        קיים — ללא שינוי כלל (לא נוגע ב-server/, אין import לעדכן)
@@ -246,7 +248,7 @@ NetworkClient מקבל                                                    Networ
 |---|---|---|
 | D1 — תשתית SQLite ו-Repositories | הושלם ואושר | נוספו סכימת `users`/`games`, חיבור מוזרק, `UserDTO`/`GameDTO` ו-repositories ללא `commit` פנימי; 7 בדיקות D1 עברו מול `:memory:` |
 | D2 — AuthService ואבטחת סיסמאות | הושלם ואושר | `AuthService` מבצע הרשמה ואימות עם PBKDF2-HMAC-SHA256, ‏600,000 iterations, ‏salt אקראי ו-compare_digest; `SqliteUnitOfWork` מנהל commit/rollback ואין SQL בשירות. כל 14 בדיקות D2 עברו וכל 269 בדיקות הפרויקט ירוקות לאחר תיקון נתיב הנכסים |
-| D3 — פרוטוקול Register/Login ושילוב בלקוח | ממתין | חוזה רשת ייעודי, handshake מול `GameServer` ובחירה בין הרשמה לכניסה לפני `JOIN` |
+| D3 — פרוטוקול Register/Login ושילוב בלקוח | מומש וממתין לאישור | `auth_protocol.py` מגדיר `REGISTER`/`LOGIN`/`AUTH_OK`; ה-CLI קולט סיסמה מוסתרת; `GameServer` מפעיל `AuthService` מול SQLite לפני `JOIN`; זהות DB ושם תצוגה נשמרים בנפרד. כל 273 הבדיקות עוברות |
 | D4 — תוצאת משחק מפורשת | ממתין | אובייקט תוצאה עם מנצח, סיבת סיום וזמן; כל מסלולי הסיום מתנקזים ל-`Match.finish()` פעם אחת |
 | D5 — חישוב ELO | ממתין | פונקציה טהורה ומבודדת לחישוב דירוגים חדשים, עם דירוג התחלתי 1200 ובדיקות יחידה |
 | D6 — שמירת סיום משחק אטומית | ממתין | היסטוריית משחק ושני עדכוני הדירוג נשמרים בטרנזקציה אחת ואינם יכולים להתבצע פעמיים |
@@ -348,7 +350,7 @@ NetworkClient מקבל                                                    Networ
 | A — Bus | הושלם | כל אירועי המשחק עוברים ב-EventBus; צרכני ה-View והצלילים פועלים; בדיקות היחידה והרגרסיה ירוקות |
 | B — Network | הושלם ואושר — B1–B5 | שני לקוחות גרפיים מסונכרנים מול שרת סמכותי; serializer עובר round-trip; הרשאות צבע, קיבולת ו-request_id תקינים; אין דליפת אירועים בין משחקים; כל 214 הבדיקות ירוקות |
 | C — Username Login | הושלם ואושר — C1–C3 | login בשם משתמש, הקצאת White/Black, הצגת שמות בלוח והודעת `server_full` מאומתים מקצה לקצה |
-| D — Auth + SQLite + ELO | בתהליך — D1–D2 הושלמו ואושרו | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
+| D — Auth + SQLite + ELO | בתהליך — D1–D2 אושרו, D3 מומש וממתין לאישור | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
 | E — Matchmaking + Disconnect | ממתין | התאמה בטווח ±100 ו-timeout; reconnect בחלון 20 שניות; countdown ו-auto-resign נבדקו |
 | F — Rooms + Spectators + Logs | ממתין | Create/Join/Cancel; שני שחקנים וצופים עם הרשאות נכונות; שני חדרים מבודדים; לוגי שרת/לקוח/משחק נוצרים ונסגרים כראוי |
 

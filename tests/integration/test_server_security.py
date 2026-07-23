@@ -7,7 +7,11 @@ from websockets.asyncio.client import connect
 from boardio.board_factory import STANDARD_GAME_CONFIG
 from model.game_config import GameConfig
 from model.position import Position
-from networking.login_protocol import LoginRequest, encode_login, parse_login_response
+from networking.auth_protocol import (
+    RegisterRequest,
+    encode_register,
+    parse_auth_response,
+)
 from networking.protocol import (
     JoinRequest,
     decode_state,
@@ -19,11 +23,18 @@ from server.game.game_registry import GameRegistry
 from server.transport.game_server import GameServer
 
 
+PASSWORD = "correct horse battery"
+
+
 async def _join(websocket, request_id, requested_config=STANDARD_GAME_CONFIG):
     """Send JOIN and return the server's config decision and initial state."""
     username = request_id.replace("join", "user")
-    await websocket.send(encode_login(LoginRequest(f"login-{username}", username)))
-    parse_login_response(await websocket.recv())
+    await websocket.send(
+        encode_register(
+            RegisterRequest(f"register-{username}", username, PASSWORD)
+        )
+    )
+    parse_auth_response(await websocket.recv())
     await websocket.send(encode_join(JoinRequest(request_id, requested_config)))
     decision = parse_config_response(await websocket.recv())
     state = decode_state(await websocket.recv())
@@ -46,10 +57,14 @@ async def _receive_responses(websocket, expected_ids, timeout=2.0):
     return responses
 
 
-def test_black_client_cannot_forge_white_move_over_websocket():
+def test_black_client_cannot_forge_white_move_over_websocket(auth_service):
     async def scenario():
         registry = GameRegistry()
-        server = GameServer(port=0, registry=registry)
+        server = GameServer(
+            port=0,
+            registry=registry,
+            auth_service=auth_service,
+        )
         await server.start()
         try:
             uri = f"ws://127.0.0.1:{server.bound_port}"
@@ -74,9 +89,9 @@ def test_black_client_cannot_forge_white_move_over_websocket():
     asyncio.run(scenario())
 
 
-def test_third_websocket_client_is_rejected_as_server_full():
+def test_third_websocket_client_is_rejected_as_server_full(auth_service):
     async def scenario():
-        server = GameServer(port=0)
+        server = GameServer(port=0, auth_service=auth_service)
         await server.start()
         try:
             uri = f"ws://127.0.0.1:{server.bound_port}"
@@ -86,9 +101,15 @@ def test_third_websocket_client_is_rejected_as_server_full():
 
                 async with connect(uri) as third:
                     await third.send(
-                        encode_login(LoginRequest("login-third", "user-third"))
+                        encode_register(
+                            RegisterRequest(
+                                "register-third",
+                                "user-third",
+                                PASSWORD,
+                            )
+                        )
                     )
-                    parse_login_response(await third.recv())
+                    parse_auth_response(await third.recv())
                     await third.send(encode_join(
                         JoinRequest("join-third", STANDARD_GAME_CONFIG)
                     ))
@@ -105,9 +126,11 @@ def test_third_websocket_client_is_rejected_as_server_full():
     asyncio.run(scenario())
 
 
-def test_second_client_receives_authoritative_config_override_over_websocket():
+def test_second_client_receives_authoritative_config_override_over_websocket(
+    auth_service,
+):
     async def scenario():
-        server = GameServer(port=0)
+        server = GameServer(port=0, auth_service=auth_service)
         await server.start()
         try:
             uri = f"ws://127.0.0.1:{server.bound_port}"
@@ -127,9 +150,9 @@ def test_second_client_receives_authoritative_config_override_over_websocket():
     asyncio.run(scenario())
 
 
-def test_interleaved_messages_preserve_command_request_ids():
+def test_interleaved_messages_preserve_command_request_ids(auth_service):
     async def scenario():
-        server = GameServer(port=0)
+        server = GameServer(port=0, auth_service=auth_service)
         await server.start()
         try:
             uri = f"ws://127.0.0.1:{server.bound_port}"
@@ -152,9 +175,9 @@ def test_interleaved_messages_preserve_command_request_ids():
     asyncio.run(scenario())
 
 
-def test_join_before_login_is_rejected_and_socket_is_closed():
+def test_join_before_authentication_is_rejected_and_socket_is_closed(auth_service):
     async def scenario():
-        server = GameServer(port=0)
+        server = GameServer(port=0, auth_service=auth_service)
         await server.start()
         try:
             uri = f"ws://127.0.0.1:{server.bound_port}"
@@ -165,7 +188,7 @@ def test_join_before_login_is_rejected_and_socket_is_closed():
 
                 assert response.request_id == "0"
                 assert not response.accepted
-                assert response.reason == "malformed_login"
+                assert response.reason == "malformed_auth_request"
                 assert websocket.close_code == 1008
         finally:
             await server.close()

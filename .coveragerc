@@ -1,7 +1,6 @@
 [run]
 omit =
     tests/*
-    old/*
     view/image_view.py
     main.py
     view/config.py

@@ -1,14 +1,16 @@
 """Async WebSocket listener, player connections, and authoritative server tick."""
-
+"""שער הכניסה לשרת"""
 import asyncio
 
 from websockets.exceptions import ConnectionClosed
 from websockets.asyncio.server import Server, ServerConnection, serve
 
-from networking.login_protocol import (
-    LoginProtocolError,
-    encode_login_ok,
-    parse_login,
+from networking.auth_protocol import (
+    AuthProtocolError,
+    AuthResponse,
+    RegisterRequest,
+    encode_auth_ok,
+    parse_auth_request,
 )
 from networking.protocol import ProtocolError, encode_error, parse_join
 from server import config
@@ -17,6 +19,7 @@ from server.game.controller import GameController
 from server.game.game_registry import GameRegistry
 from server.game.tick_loop import run_tick_loop
 from server.services.active_user_registry import ActiveUserRegistry
+from server.services.auth import AuthError
 from server.transport.connection_io import run_connection_io
 
 
@@ -29,7 +32,10 @@ class GameServer:
         port: int = config.PORT,
         registry=None,
         active_users=None,
+        auth_service=None,
     ):
+        if auth_service is None:
+            raise TypeError("AUTH_SERVICE_REQUIRED")
         self._host = host
         self._port = port
         self._server: Server | None = None
@@ -38,6 +44,7 @@ class GameServer:
         self._active_users = (
             active_users if active_users is not None else ActiveUserRegistry()
         )
+        self._auth_service = auth_service
         self._admission = GameAdmission(self._registry)
         self._controller = GameController(self._registry)
 
@@ -55,6 +62,7 @@ class GameServer:
 
     async def start(self) -> None:
         """Bind the WebSocket listener without blocking the current task."""
+        """מפעילה את השרת"""
         if self._server is not None:
             raise RuntimeError("server_already_running")
         self._server = await serve(self._handle_connection, self._host, self._port)
@@ -81,27 +89,52 @@ class GameServer:
         await server.wait_closed()
 
     async def _handle_connection(self, connection: ServerConnection) -> None:
-        """Require LOGIN before JOIN, then run authorized game command I/O."""
+        """Require account authentication before JOIN and authorized game I/O."""
         context = None
         claimed_username = None
         try:
             try:
-                login_request = parse_login(await connection.recv())
-            except LoginProtocolError as exc:
+                auth_request = parse_auth_request(await connection.recv())
+            except AuthProtocolError as exc:
                 await connection.send(encode_error("0", str(exc).lower()))
-                await connection.close(code=1008, reason="invalid_login")
+                await connection.close(code=1008, reason="invalid_auth_request")
                 return
 
-            if not self._active_users.claim(login_request.username):
-                await connection.send(
-                    encode_error(login_request.request_id, "username_taken")
+            try:
+                operation = (
+                    self._auth_service.register
+                    if isinstance(auth_request, RegisterRequest)
+                    else self._auth_service.login
                 )
-                await connection.close(code=1008, reason="username_taken")
+                user = await asyncio.to_thread(
+                    operation,
+                    auth_request.username,
+                    auth_request.password,
+                )
+            except AuthError as exc:
+                await connection.send(
+                    encode_error(auth_request.request_id, exc.reason)
+                )
+                await connection.close(code=1008, reason="authentication_rejected")
                 return
 
-            claimed_username = login_request.username
+            if not self._active_users.claim(user.username):
+                await connection.send(
+                    encode_error(auth_request.request_id, "user_already_connected")
+                )
+                await connection.close(code=1008, reason="user_already_connected")
+                return
+
+            claimed_username = user.username
             await connection.send(
-                encode_login_ok(login_request.request_id, login_request.username)
+                encode_auth_ok(
+                    AuthResponse(
+                        request_id=auth_request.request_id,
+                        user_id=user.id,
+                        username=user.username,
+                        rating=user.rating,
+                    )
+                )
             )
 
             try:
@@ -114,7 +147,8 @@ class GameServer:
             result = await self._admission.admit(
                 join_request,
                 websocket=connection,
-                user_id=claimed_username,
+                user_id=user.id,
+                username=user.username,
             )
             if not result.is_accepted:
                 await connection.send(result.rejection)

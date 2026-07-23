@@ -1,10 +1,9 @@
-"""In-memory ownership of usernames currently connected to one server."""
-"""רכיב זיכרון שמני, שומר בינתיים את שמות המשתמשים הקיימים עד שיהיה DB"""
+"""In-memory ownership of authenticated usernames currently connected."""
 import unicodedata
 
 
 class ActiveUserRegistry:
-    """Claim and release active display names without persistent accounts."""
+    """Prevent one persistent account from owning two live connections."""
 
     def __init__(self):
         """Start with no active usernames."""

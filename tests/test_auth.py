@@ -1,5 +1,7 @@
 """Authentication-service tests against an in-memory SQLite database."""
 
+import sqlite3
+
 import pytest
 
 from server.dal.database import DEFAULT_RATING, connect_database, init_schema
@@ -170,3 +172,14 @@ def test_unit_of_work_rolls_back_partial_operation(auth_environment):
 
     assert connection.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
     assert not connection.in_transaction
+
+
+def test_owned_unit_of_work_closes_its_connection():
+    connection = connect_database()
+    init_schema(connection)
+
+    with SqliteUnitOfWork(connection, close_connection=True):
+        pass
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        connection.execute("SELECT 1")

@@ -67,13 +67,15 @@ def test_second_player_join_broadcasts_both_names_to_both_players():
         _, admission = _admission_with_predictable_ids()
         first = await admission.admit(
             JoinRequest("join-1", STANDARD_GAME_CONFIG),
-            user_id="Alice",
+            user_id=1,
+            username="Alice",
         )
         _drain(first.context)
 
         second = await admission.admit(
             JoinRequest("join-2", STANDARD_GAME_CONFIG),
-            user_id="Bob",
+            user_id=2,
+            username="Bob",
         )
 
         first_state = decode_state(_drain(first.context)[0])

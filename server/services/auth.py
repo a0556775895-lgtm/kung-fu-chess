@@ -1,17 +1,17 @@
 """Registration and password verification without SQL or transport concerns."""
-
+"""מגדירה את הפרוטוקול של האימות"""
 from dataclasses import dataclass
 import hashlib
 import hmac
 import secrets
 
-from networking.login_protocol import LoginProtocolError, validate_username
+from networking.auth_protocol import AuthProtocolError, validate_username
 from server.dal.repository import DuplicateUsernameError
 
 
 PBKDF2_ITERATIONS = 600_000
 SALT_SIZE_BYTES = 16
-MIN_PASSWORD_LENGTH = 15
+MIN_PASSWORD_LENGTH = 4
 MAX_PASSWORD_BYTES = 1024
 
 
@@ -81,7 +81,7 @@ class AuthService:
         try:
             validate_username(username)
             password_bytes = self._password_bytes(password)
-        except (LoginProtocolError, AuthError):
+        except (AuthProtocolError, AuthError):
             raise AuthError("invalid_credentials") from None
 
         with self._unit_of_work_factory() as unit_of_work:
@@ -96,7 +96,7 @@ class AuthService:
     def _validate_registration_username(self, username: str) -> None:
         try:
             validate_username(username)
-        except LoginProtocolError as exc:
+        except AuthProtocolError as exc:
             raise AuthError("invalid_username") from exc
 
     def _validate_new_password(self, password: str) -> bytes:

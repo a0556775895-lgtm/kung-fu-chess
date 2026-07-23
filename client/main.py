@@ -1,10 +1,10 @@
 """Command-line entry point for one graphical multiplayer client."""
-
+"""אחראי להרכיב את כל רכיבי הלקוח"""
 import argparse
 import logging
 
-from client.cli_login import prompt_username
-from client.network_client import LoginRejectedError, NetworkClient
+from client.cli_auth import AuthAction, AuthCredentials, prompt_credentials
+from client.network_client import AuthenticationRejectedError, NetworkClient
 from client.network_event_adapter import NetworkEventAdapter
 from client.remote_game_engine_proxy import RemoteGameEngineProxy
 from view.display_manager import DisplayManager
@@ -14,9 +14,17 @@ DEFAULT_SERVER_URI = "ws://127.0.0.1:8765"
 logger = logging.getLogger(__name__)
 
 
-def run_client(username: str, server_uri: str = DEFAULT_SERVER_URI) -> None:
+def run_client(
+    credentials: AuthCredentials,
+    server_uri: str = DEFAULT_SERVER_URI,
+) -> None:
     """Connect, compose the remote game view, and close networking on exit."""
-    network_client = NetworkClient(server_uri, username)
+    network_client = NetworkClient(
+        server_uri,
+        credentials.username,
+        credentials.password,
+        register=credentials.action is AuthAction.REGISTER,
+    )
     network_client.start()
     try:
         proxy = RemoteGameEngineProxy(network_client)
@@ -55,11 +63,11 @@ def main(argv=None) -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    username = prompt_username()
+    credentials = prompt_credentials()
     try:
-        run_client(username, args.server)
-    except LoginRejectedError as exc:
-        logger.error("login rejected: %s", exc.reason)
+        run_client(credentials, args.server)
+    except AuthenticationRejectedError as exc:
+        logger.error("authentication rejected: %s", exc.reason)
     except KeyboardInterrupt:
         logger.info("client stopped")
 

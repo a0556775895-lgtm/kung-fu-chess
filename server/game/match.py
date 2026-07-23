@@ -1,5 +1,5 @@
 """One isolated authoritative game and its assigned connections."""
-
+"""מייצגת משחק בודד"""
 from dataclasses import replace
 
 from networking.protocol import encode_state
@@ -73,8 +73,8 @@ class Match:
         """Map assigned colors to display names, retaining labels for empty seats."""
         names = {"w": "White", "b": "Black"}
         for connection in self.connections():
-            if connection.color is not None and connection.user_id is not None:
-                names[str(connection.color)] = connection.user_id
+            if connection.color is not None and connection.username is not None:
+                names[str(connection.color)] = connection.username
         return names
 
     def send_state(self, context) -> None:

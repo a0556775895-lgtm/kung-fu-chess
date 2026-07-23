@@ -1,5 +1,5 @@
 """Atomic player admission and authoritative Match configuration selection."""
-
+"""מחליט אם משתמש יכול להתחבר למשחק, אחראית על חיבור משתמש למשחק"""
 import asyncio
 from dataclasses import dataclass
 import uuid
@@ -50,7 +50,8 @@ class GameAdmission:
         self,
         request: JoinRequest,
         websocket=None,
-        user_id: str | None = None,
+        user_id: int | None = None,
+        username: str | None = None,
     ) -> AdmissionResult:
         """Atomically create/find the Match, assign a free color, and queue initial messages."""
         async with self._lock:
@@ -76,6 +77,7 @@ class GameAdmission:
                 role=ConnectionRole.PLAYER,
                 color=color,
                 user_id=user_id,
+                username=username,
                 websocket=websocket,
             )
             match.add_connection(context)
