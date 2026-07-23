@@ -1,15 +1,17 @@
 """One isolated authoritative game and its assigned connections."""
 """מייצגת משחק בודד"""
 from dataclasses import replace
+from datetime import datetime, timezone
 
 from networking.protocol import encode_state
+from server.game.game_result import FinishReason, GameResult
 from server.transport.broadcaster import ServerBroadcaster
 
 
 class Match:
     """Isolate one authoritative engine, sequence stream and connection group."""
 
-    def __init__(self, game_id: str, engine, game_config=None):
+    def __init__(self, game_id: str, engine, game_config=None, now=None):
         """Create one game boundary and attach its per-match event broadcaster."""
         if not game_id:
             raise ValueError("INVALID_GAME_ID")
@@ -18,6 +20,8 @@ class Match:
         self.game_config = game_config
         self._connections = {}
         self._sequence = 0
+        self._result = None
+        self._now = now or (lambda: datetime.now(timezone.utc))
         self.broadcaster = ServerBroadcaster(
             game_id=game_id,
             bus=engine.bus,
@@ -89,10 +93,32 @@ class Match:
             context.enqueue(encode_state(self.snapshot_for(context, sequence)))
 
     def advance_time(self, milliseconds: int) -> None:
-        """Advance only this Match's authoritative engine clock."""
+        """Advance this Match and convert a king capture into one final result."""
         if milliseconds < 0:
             raise ValueError("NEGATIVE_TICK")
         self.engine.wait(milliseconds)
+        if self.engine.game_over and self._result is None:
+            if self.engine.winner_color is None:
+                raise RuntimeError("GAME_OVER_WITHOUT_WINNER")
+            self.finish(GameResult(
+                winner_color=self.engine.winner_color,
+                reason=FinishReason.KING_CAPTURE,
+                ended_at=self._now(),
+            ))
+
+    def finish(self, result: GameResult) -> bool:
+        """Store the first final result and ignore repeated finish attempts."""
+        if not isinstance(result, GameResult):
+            raise ValueError("INVALID_GAME_RESULT")
+        if self._result is not None:
+            return False
+        self._result = result
+        return True
+
+    @property
+    def result(self) -> GameResult | None:
+        """Return the immutable final result, or None while the game is active."""
+        return self._result
 
     def close(self) -> None:
         """Unsubscribe the broadcaster and release all connection references."""

@@ -1,14 +1,17 @@
 """In-memory integration tests across server routing, matches and broadcasting."""
 
 import asyncio
+from datetime import datetime, timezone
 
 import pytest
 
 from boardio.board_parser import BoardParser
 from engine.game_engine import GameEngine
 from model.piece import PieceColor
+from model.position import Position
 from networking.protocol import decode_event, decode_state, parse_command_response
 from server.game.controller import GameController
+from server.game.game_result import FinishReason, GameResult
 from server.game.game_registry import GameRegistry
 from server.game.match import Match
 from server.transport.connection import ConnectionContext, ConnectionRole
@@ -185,3 +188,46 @@ def test_arrival_event_uses_authoritative_engine_time():
     arrival = decode_event(context.outbound.get_nowait())
     assert arrival["type"] == "ARRIVAL"
     assert arrival["server_time_ms"] == 1000
+
+
+def test_match_records_king_capture_result_and_snapshot_winner():
+    ended_at = datetime(2026, 7, 24, 12, 0, tzinfo=timezone.utc)
+    engine = GameEngine(BoardParser.parse(["wR bK"]))
+    match = Match("result-game", engine, now=lambda: ended_at)
+
+    assert engine.request_move(Position(0, 0), Position(0, 1)).is_accepted
+    match.advance_time(1000)
+
+    assert match.result == GameResult(
+        winner_color=PieceColor.WHITE,
+        reason=FinishReason.KING_CAPTURE,
+        ended_at=ended_at,
+    )
+    assert engine.snapshot().winner_color == "w"
+
+
+def test_match_finish_is_idempotent():
+    match = Match("result-game", make_engine())
+    first = GameResult(
+        winner_color=PieceColor.WHITE,
+        reason=FinishReason.RESIGN,
+        ended_at=datetime(2026, 7, 24, 12, 0, tzinfo=timezone.utc),
+    )
+    second = GameResult(
+        winner_color=PieceColor.BLACK,
+        reason=FinishReason.DISCONNECT,
+        ended_at=datetime(2026, 7, 24, 12, 1, tzinfo=timezone.utc),
+    )
+
+    assert match.finish(first) is True
+    assert match.finish(second) is False
+    assert match.result is first
+
+
+def test_game_result_requires_timezone_aware_end_time():
+    with pytest.raises(ValueError, match="END_TIME_MUST_BE_TIMEZONE_AWARE"):
+        GameResult(
+            winner_color=PieceColor.WHITE,
+            reason=FinishReason.KING_CAPTURE,
+            ended_at=datetime(2026, 7, 24, 12, 0),
+        )

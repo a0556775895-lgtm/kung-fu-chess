@@ -14,6 +14,12 @@ ASSETS_ROOT = Path("view") / "asset" / "pieces"
 BOARD_IMAGE_PATH = Path("view") / "asset" / "board.png"
 BACKGROUND_IMAGE_PATH = Path("view") / "asset" / "background.png"
 SIDE_PANEL_IMAGE_PATH = Path("view") / "asset" / "side_panel.png"
+GAME_OVER_WHITE_WIN_IMAGE_PATH = (
+    Path("view") / "asset" / "game_over_white_win.png"
+)
+GAME_OVER_BLACK_WIN_IMAGE_PATH = (
+    Path("view") / "asset" / "game_over_black_win.png.png"
+)
 
 PIECE_KINDS = ("P", "N", "B", "R", "Q", "K")
 PIECE_COLORS = ("W", "B")

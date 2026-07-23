@@ -137,6 +137,7 @@ class GameEngine:
     def wait(self, milliseconds):
         """Advance simulated time, notify observers of any arrivals, and end the game if a king was captured."""
         arrival_events = self._arbiter.advance_time(milliseconds)
+        winner_color = None
 
         for event in arrival_events.events:
             logger.info(
@@ -145,11 +146,18 @@ class GameEngine:
                 f"{event.captured_piece.id}({event.captured_piece.kind})" if event.captured_piece else None,
             )
             self._record_capture_score(event)
+            participants = self._capture_participants(event)
+            if participants is not None:
+                victim, capturer = participants
+                if victim.kind == "K":
+                    winner_color = capturer.color
             self._bus.publish(Arrival(event))
 
         if arrival_events.king_captured:
-            logger.info("game over: king captured")
-            self._game_state.end_game()
+            if winner_color is None:
+                raise RuntimeError("KING_CAPTURE_WITHOUT_WINNER")
+            logger.info("game over: king captured by %s", winner_color)
+            self._game_state.end_game(winner_color)
             self._bus.publish(GameOver())
 
     def snapshot(self, selected_cell=None):
@@ -185,13 +193,28 @@ class GameEngine:
             airborne_until=self._arbiter.airborne_until,
             resting_until=self._arbiter.resting_until,
             scores=self._game_state.snapshot_scores(),
+            winner_color=(
+                str(self._game_state.winner_color)
+                if self._game_state.winner_color is not None
+                else None
+            ),
             server_time_ms=self._arbiter.current_time_ms,
         )
 
     def _record_capture_score(self, event) -> None:
         """Update authoritative score for a normal or airborne capture."""
-        if event.captured_piece is None:
+        participants = self._capture_participants(event)
+        if participants is None:
             return
+
+        victim, capturer = participants
+        self._game_state.add_score(capturer.color, _PIECE_VALUES[victim.kind])
+
+    @staticmethod
+    def _capture_participants(event):
+        """Return (victim, capturer) for normal and airborne captures."""
+        if event.captured_piece is None:
+            return None
 
         if event.captured_piece.state != PieceState.CAPTURED:
             victim = event.piece
@@ -200,12 +223,17 @@ class GameEngine:
             victim = event.captured_piece
             capturer = event.piece
 
-        self._game_state.add_score(capturer.color, _PIECE_VALUES[victim.kind])
+        return victim, capturer
 
     @property
     def game_over(self):
         """Whether the game has ended."""
         return self._game_state.game_over
+
+    @property
+    def winner_color(self):
+        """The winning side after game over, otherwise None."""
+        return self._game_state.winner_color
 
 
 class _MoveResult:

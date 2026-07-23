@@ -70,8 +70,11 @@ def test_piece_str():
 def test_gamestate_end_game():
     gs = GameState()
     assert gs.game_over is False
-    gs.end_game()
+    assert gs.end_game(PieceColor.WHITE) is True
     assert gs.game_over is True
+    assert gs.winner_color is PieceColor.WHITE
+    assert gs.end_game(PieceColor.BLACK) is False
+    assert gs.winner_color is PieceColor.WHITE
 
 
 # ── PieceFactory ──────────────────────────────────────────────────────────────
@@ -591,9 +594,23 @@ def test_game_engine_game_over_blocks_moves():
     engine.request_move(Position(0, 0), Position(0, 1))
     engine.wait(1000)
     assert engine.game_over
+    assert engine.winner_color is PieceColor.WHITE
     result = engine.request_move(Position(0, 1), Position(0, 0))
     assert not result.is_accepted
     assert result.reason == "game_over"
+
+
+def test_game_engine_airborne_capture_records_airborne_winner():
+    board = make_board(["wK bN"])
+    engine = GameEngine(board)
+    engine.request_jump(Position(0, 1))
+    engine.request_move(Position(0, 0), Position(0, 1))
+
+    engine.wait(1000)
+
+    assert engine.game_over
+    assert engine.winner_color is PieceColor.BLACK
+    assert engine.snapshot().winner_color == "b"
 
 
 def test_game_engine_wait_advances_time():

@@ -17,6 +17,7 @@ from .selection.selection_renderer import SelectionRenderer      # חדש
 from .hud.score.score_renderer import ScoreRenderer
 from .hud.moves_log.moves_log_data import MovesLogData
 from .hud.moves_log.moves_log_renderer import MovesLogRenderer
+from .game_over.game_over_renderer import GameOverRenderer
 from .audio.sound_player import SoundPlayer
 from .input.mouse_command_extractor import MouseCommandExtractor
 from .input.commands import GameCommandSender
@@ -66,9 +67,10 @@ class DisplayManager:
         self._board_loader = BoardLoader(self._geometry)
         self._animation_library = AnimationLibrary(self._geometry)
         self._highlight_loader = HighlightLoader(self._geometry)        # חדש
+        self._game_over_renderer = GameOverRenderer(self._geometry)
 
         for loader in (self._background_loader, self._board_loader, self._animation_library,
-                       self._highlight_loader):                          # עודכן - נוסף highlight_loader
+                       self._highlight_loader, self._game_over_renderer):
             loader.load()
 
         self._board_renderer = BoardRenderer(self._board_loader, self._geometry)
@@ -80,7 +82,8 @@ class DisplayManager:
         self._moves_log_renderer = MovesLogRenderer(self._moves_log_data, self._geometry)
 
         self._renderers = [self._board_renderer, self._selection_renderer, self._piece_renderer,
-                            self._score_renderer, self._moves_log_renderer]
+                            self._score_renderer, self._moves_log_renderer,
+                            self._game_over_renderer]
 
         self._observer_cancellations = [
             self._event_source.subscribe(self._piece_animator),
