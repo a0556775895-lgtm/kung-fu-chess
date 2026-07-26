@@ -154,7 +154,7 @@ class GameEngine:
             self._bus.publish(Arrival(event))
 
         if arrival_events.king_captured:
-            if winner_color is None:
+            if winner_color is None:  # pragma: no cover - arbiter sets the flag only for a captured king event
                 raise RuntimeError("KING_CAPTURE_WITHOUT_WINNER")
             logger.info("game over: king captured by %s", winner_color)
             self._game_state.end_game(winner_color)

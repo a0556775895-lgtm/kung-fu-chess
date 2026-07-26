@@ -7,14 +7,22 @@ omit =
     view/geometry.py
     view/img.py
     view/image_utils.py
+    view/observer.py
     view/protocols.py
     view/display_manager.py
     view/animation/*
     view/board/*
     view/pieces/*
     view/input/*
+    view/audio/*
+    view/background/*
+    view/game_over/*
+    view/hud/*
+    view/selection/*
+    view/renderer.py
 
 [report]
+fail_under = 100
 exclude_lines =
     pragma: no cover
     class \w+\(Protocol\):

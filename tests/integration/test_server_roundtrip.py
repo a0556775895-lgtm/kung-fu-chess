@@ -72,6 +72,20 @@ async def _observe_completed_move(websocket, request_id=None):
     return response, final_state
 
 
+async def _wait_for_player_names(websocket, expected_names):
+    """Ignore periodic snapshots until both admitted player names are visible."""
+    deadline = asyncio.get_running_loop().time() + 3.0
+    while True:
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise TimeoutError("player names were not synchronized")
+        message = await asyncio.wait_for(websocket.recv(), timeout=remaining)
+        if message.startswith("STATE "):
+            state = decode_state(message)
+            if state.player_names == expected_names:
+                return state
+
+
 def _board_signature(state):
     """Compare shared game data while ignoring connection-specific metadata."""
     return tuple(
@@ -88,16 +102,17 @@ def test_two_clients_share_one_authoritative_websocket_game(auth_service):
             async with connect(uri) as white, connect(uri) as black:
                 white_config, white_initial = await _join(white, "join-white")
                 black_config, black_initial = await _join(black, "join-black")
-                white_after_black_joined = decode_state(await white.recv())
+                expected_names = {"w": "user-white", "b": "user-black"}
+                white_after_black_joined = await _wait_for_player_names(
+                    white,
+                    expected_names,
+                )
 
                 assert not white_config.was_overridden
                 assert not black_config.was_overridden
                 assert white_initial.assigned_color == "w"
                 assert black_initial.assigned_color == "b"
-                assert white_after_black_joined.player_names == {
-                    "w": "user-white",
-                    "b": "user-black",
-                }
+                assert white_after_black_joined.player_names == expected_names
                 assert black_initial.player_names == white_after_black_joined.player_names
                 assert _board_signature(white_initial) == _board_signature(black_initial)
 

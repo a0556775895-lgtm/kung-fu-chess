@@ -124,7 +124,7 @@ class GameSnapshotSerializer:
             )
         except SnapshotSerializationError:
             raise
-        except (KeyError, TypeError) as exc:
+        except (AttributeError, KeyError, TypeError) as exc:
             raise SnapshotSerializationError("INVALID_SNAPSHOT_PAYLOAD") from exc
 
     @classmethod
@@ -152,7 +152,7 @@ def _position_from_dict(payload: Any) -> Position | None:
 
 
 def _required_position(payload: Any, key: str) -> Position:
-    if not isinstance(payload, dict):
+    if not isinstance(payload, dict):  # pragma: no cover - required item fields are validated first
         raise SnapshotSerializationError("INVALID_SNAPSHOT_PAYLOAD")
     position = _position_from_dict(payload.get(key))
     if position is None:
