@@ -33,6 +33,7 @@ class GameServer:
         registry=None,
         active_users=None,
         auth_service=None,
+        completion_service=None,
     ):
         if auth_service is None:
             raise TypeError("AUTH_SERVICE_REQUIRED")
@@ -45,7 +46,10 @@ class GameServer:
             active_users if active_users is not None else ActiveUserRegistry()
         )
         self._auth_service = auth_service
-        self._admission = GameAdmission(self._registry)
+        self._admission = GameAdmission(
+            self._registry,
+            completion_service=completion_service,
+        )
         self._controller = GameController(self._registry)
 
     @property

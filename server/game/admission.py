@@ -40,10 +40,12 @@ class GameAdmission:
         registry,
         game_id: str = server_config.DEFAULT_GAME_ID,
         connection_id_factory=None,
+        completion_service=None,
     ):
         self._registry = registry
         self._game_id = game_id
         self._connection_id_factory = connection_id_factory or (lambda: uuid.uuid4().hex)
+        self._completion_service = completion_service
         self._lock = asyncio.Lock()
 
     async def admit(
@@ -108,6 +110,7 @@ class GameAdmission:
                 self._game_id,
                 GameEngine(create_board(request.requested_config)),
                 game_config=request.requested_config,
+                completion_service=self._completion_service,
             )
             self._registry.add(match)
             return match

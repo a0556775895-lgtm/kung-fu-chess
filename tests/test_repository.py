@@ -6,6 +6,7 @@ import pytest
 
 from server.dal.database import DEFAULT_RATING, connect_database, init_schema
 from server.dal.repository import (
+    DuplicateGameCompletionError,
     DuplicateUsernameError,
     GameRepository,
     UserRepository,
@@ -90,22 +91,27 @@ def test_game_repository_records_complete_rating_history(connection):
     black = _create_user(users, "Bob")
 
     game = games.record_game(
+        match_instance_id="match-1",
         white_user_id=white.id,
         black_user_id=black.id,
         winner_color="w",
+        finish_reason="KING_CAPTURE",
         white_rating_before=1200,
         black_rating_before=1200,
         white_rating_after=1216,
         black_rating_after=1184,
-        started_at="2026-07-22T12:00:00Z",
-        ended_at="2026-07-22T12:05:00Z",
+        duration_ms=300_000,
     )
 
     assert games.get_by_id(game.id) == game
+    assert games.get_by_match_instance_id("match-1") == game
+    assert game.match_instance_id == "match-1"
     assert game.white_user_id == white.id
     assert game.black_user_id == black.id
     assert game.winner_color == "w"
+    assert game.finish_reason == "KING_CAPTURE"
     assert (game.white_rating_after, game.black_rating_after) == (1216, 1184)
+    assert game.duration_ms == 300_000
 
 
 def test_game_repository_enforces_user_foreign_keys(connection):
@@ -113,15 +119,57 @@ def test_game_repository_enforces_user_foreign_keys(connection):
 
     with pytest.raises(sqlite3.IntegrityError):
         games.record_game(
+            match_instance_id="missing-users",
             white_user_id=1,
             black_user_id=2,
             winner_color="w",
+            finish_reason="KING_CAPTURE",
             white_rating_before=1200,
             black_rating_before=1200,
             white_rating_after=1216,
             black_rating_after=1184,
-            started_at="2026-07-22T12:00:00Z",
-            ended_at="2026-07-22T12:05:00Z",
+            duration_ms=300_000,
+        )
+
+
+def test_game_repository_rejects_duplicate_match_instance(connection):
+    users = UserRepository(connection)
+    games = GameRepository(connection)
+    white = _create_user(users, "Alice")
+    black = _create_user(users, "Bob")
+    arguments = {
+        "match_instance_id": "same-match",
+        "white_user_id": white.id,
+        "black_user_id": black.id,
+        "winner_color": "w",
+        "finish_reason": "KING_CAPTURE",
+        "white_rating_before": 1200,
+        "black_rating_before": 1200,
+        "white_rating_after": 1216,
+        "black_rating_after": 1184,
+        "duration_ms": 300_000,
+    }
+    games.record_game(**arguments)
+
+    with pytest.raises(DuplicateGameCompletionError):
+        games.record_game(**arguments)
+
+
+def test_game_repository_rejects_empty_match_instance(connection):
+    games = GameRepository(connection)
+
+    with pytest.raises(ValueError, match="INVALID_MATCH_INSTANCE_ID"):
+        games.record_game(
+            match_instance_id="",
+            white_user_id=1,
+            black_user_id=2,
+            winner_color="w",
+            finish_reason="KING_CAPTURE",
+            white_rating_before=1200,
+            black_rating_before=1200,
+            white_rating_after=1216,
+            black_rating_after=1184,
+            duration_ms=300_000,
         )
 
 

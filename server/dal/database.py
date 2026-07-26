@@ -32,19 +32,27 @@ def init_schema(connection: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS games (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            match_instance_id TEXT NOT NULL,
             white_user_id INTEGER NOT NULL,
             black_user_id INTEGER NOT NULL,
             winner_color TEXT NOT NULL CHECK (winner_color IN ('w', 'b')),
+            finish_reason TEXT NOT NULL
+                CHECK (finish_reason IN ('KING_CAPTURE', 'RESIGN', 'DISCONNECT')),
             white_rating_before INTEGER NOT NULL CHECK (white_rating_before >= 0),
             black_rating_before INTEGER NOT NULL CHECK (black_rating_before >= 0),
             white_rating_after INTEGER NOT NULL CHECK (white_rating_after >= 0),
             black_rating_after INTEGER NOT NULL CHECK (black_rating_after >= 0),
-            started_at TEXT NOT NULL,
-            ended_at TEXT NOT NULL,
+            duration_ms INTEGER NOT NULL CHECK (duration_ms >= 0),
             CHECK (white_user_id <> black_user_id),
             FOREIGN KEY (white_user_id) REFERENCES users(id),
             FOREIGN KEY (black_user_id) REFERENCES users(id)
         );
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_games_match_instance_id
+        ON games (match_instance_id)
         """
     )
 

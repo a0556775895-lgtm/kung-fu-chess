@@ -1,6 +1,6 @@
 """Convert one Match's domain events into non-blocking outbound messages."""
 
-from engine.events import Arrival, GameOver, GameStarted, JumpStarted, MotionStarted
+from engine.events import Arrival, GameStarted, JumpStarted, MotionStarted
 from networking.protocol import encode_event
 
 
@@ -18,7 +18,6 @@ class ServerBroadcaster:
             bus.subscribe(JumpStarted, self._on_jump),
             bus.subscribe(Arrival, self._on_arrival),
             bus.subscribe(GameStarted, self._on_game_started),
-            bus.subscribe(GameOver, self._on_game_over),
         ]
 
     def close(self) -> None:
@@ -75,7 +74,8 @@ class ServerBroadcaster:
     def _on_game_started(self, _event: GameStarted) -> None:
         self._publish(self._metadata("GAME_STARTED"))
 
-    def _on_game_over(self, _event: GameOver) -> None:
+    def publish_game_over(self) -> None:
+        """Notify clients only after Match has finalized the result."""
         self._publish(self._metadata("GAME_OVER"))
 
 

@@ -8,6 +8,7 @@ from server import config
 from server.dal.database import connect_database, init_schema
 from server.dal.unit_of_work import SqliteUnitOfWork
 from server.services.auth import AuthService
+from server.services.game_completion import GameCompletionService
 from server.transport.game_server import GameServer
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,10 @@ def create_server(database_path: str | Path = config.DATABASE_PATH) -> GameServe
             close_connection=True,
         )
 
-    return GameServer(auth_service=AuthService(unit_of_work_factory))
+    return GameServer(
+        auth_service=AuthService(unit_of_work_factory),
+        completion_service=GameCompletionService(unit_of_work_factory),
+    )
 
 
 async def run_server() -> None:

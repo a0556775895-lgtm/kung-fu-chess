@@ -1,27 +1,45 @@
 """One isolated authoritative game and its assigned connections."""
 """מייצגת משחק בודד"""
 from dataclasses import replace
-from datetime import datetime, timezone
+import uuid
 
+from model.piece import PieceColor
 from networking.protocol import encode_state
 from server.game.game_result import FinishReason, GameResult
 from server.transport.broadcaster import ServerBroadcaster
+from server.transport.connection import ConnectionRole
 
 
 class Match:
     """Isolate one authoritative engine, sequence stream and connection group."""
 
-    def __init__(self, game_id: str, engine, game_config=None, now=None):
+    def __init__(
+        self,
+        game_id: str,
+        engine,
+        game_config=None,
+        *,
+        match_instance_id=None,
+        completion_service=None,
+    ):
         """Create one game boundary and attach its per-match event broadcaster."""
         if not game_id:
             raise ValueError("INVALID_GAME_ID")
         self.game_id = game_id
+        self.match_instance_id = (
+            uuid.uuid4().hex
+            if match_instance_id is None
+            else match_instance_id
+        )
+        if not isinstance(self.match_instance_id, str) or not self.match_instance_id:
+            raise ValueError("INVALID_MATCH_INSTANCE_ID")
         self.engine = engine
         self.game_config = game_config
         self._connections = {}
+        self._player_user_ids = {}
         self._sequence = 0
         self._result = None
-        self._now = now or (lambda: datetime.now(timezone.utc))
+        self._completion_service = completion_service
         self.broadcaster = ServerBroadcaster(
             game_id=game_id,
             bus=engine.bus,
@@ -36,6 +54,12 @@ class Match:
             raise ValueError("CONNECTION_GAME_MISMATCH")
         if context.connection_id in self._connections:
             raise ValueError("CONNECTION_ALREADY_EXISTS")
+        if (
+            context.role is ConnectionRole.PLAYER
+            and context.color is not None
+            and context.user_id is not None
+        ):
+            self._player_user_ids[context.color] = context.user_id
         self._connections[context.connection_id] = context
 
     def remove_connection(self, connection_id: str):
@@ -103,7 +127,7 @@ class Match:
             self.finish(GameResult(
                 winner_color=self.engine.winner_color,
                 reason=FinishReason.KING_CAPTURE,
-                ended_at=self._now(),
+                duration_ms=self.server_time_ms(),
             ))
 
     def finish(self, result: GameResult) -> bool:
@@ -112,13 +136,31 @@ class Match:
             raise ValueError("INVALID_GAME_RESULT")
         if self._result is not None:
             return False
+        if self._completion_service is not None:
+            try:
+                white_user_id = self._player_user_ids[PieceColor.WHITE]
+                black_user_id = self._player_user_ids[PieceColor.BLACK]
+            except KeyError as exc:
+                raise RuntimeError("AUTHENTICATED_PLAYERS_REQUIRED") from exc
+            self._completion_service.complete(
+                match_instance_id=self.match_instance_id,
+                white_user_id=white_user_id,
+                black_user_id=black_user_id,
+                result=result,
+            )
         self._result = result
+        self.broadcaster.publish_game_over()
         return True
 
     @property
     def result(self) -> GameResult | None:
         """Return the immutable final result, or None while the game is active."""
         return self._result
+
+    @property
+    def player_user_ids(self) -> dict[PieceColor, int]:
+        """Return persistent seat identities independently of live connections."""
+        return dict(self._player_user_ids)
 
     def close(self) -> None:
         """Unsubscribe the broadcaster and release all connection references."""

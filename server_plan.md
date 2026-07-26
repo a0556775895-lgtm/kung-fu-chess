@@ -250,13 +250,13 @@ NetworkClient מקבל                                                    Networ
 | D2 — AuthService ואבטחת סיסמאות | הושלם ואושר | `AuthService` מבצע הרשמה ואימות עם PBKDF2-HMAC-SHA256, ‏600,000 iterations, ‏salt אקראי ו-compare_digest; `SqliteUnitOfWork` מנהל commit/rollback ואין SQL בשירות. כל 14 בדיקות D2 עברו וכל 269 בדיקות הפרויקט ירוקות לאחר תיקון נתיב הנכסים |
 | D3 — פרוטוקול Register/Login ושילוב בלקוח | הושלם ואושר | `auth_protocol.py` מגדיר `REGISTER`/`LOGIN`/`AUTH_OK`; ה-CLI קולט סיסמה מוסתרת; `GameServer` מפעיל `AuthService` מול SQLite לפני `JOIN`; זהות DB ושם תצוגה נשמרים בנפרד. כל 273 הבדיקות עוברות |
 | D4 — תוצאת משחק מפורשת | הושלם ואושר | `GameResult` שומר מנצח, סיבת סיום וזמן UTC; תפיסת מלך מתנקזת ל-`Match.finish()` פעם אחת; המנצח נכלל ב-snapshot ומוצגת תמונת הסיום המתאימה בלקוח. כל 349 הבדיקות עוברות וכיסוי הלוגיקה הנמדדת הוא 100% |
-| D5 — חישוב ELO | מומש וממתין לאישור | `calculate_elo()` מחשבת דירוגים חדשים בפונקציה טהורה עם `K=32`, שומרת על סכום הדירוגים ומטפלת בניצחון צפוי או בהפתעה; 15 בדיקות D5 וכל 364 בדיקות הפרויקט עוברות בכיסוי לוגיקה נמדדת של 100% |
-| D6 — שמירת סיום משחק אטומית | ממתין | היסטוריית משחק ושני עדכוני הדירוג נשמרים בטרנזקציה אחת ואינם יכולים להתבצע פעמיים |
+| D5 — חישוב ELO | הושלם ואושר | `calculate_elo()` מחשבת דירוגים חדשים בפונקציה טהורה עם `K=32`, שומרת על סכום הדירוגים ומטפלת בניצחון צפוי או בהפתעה; 15 בדיקות D5 וכל 364 בדיקות הפרויקט עוברות בכיסוי לוגיקה נמדדת של 100% |
+| D6 — שמירת סיום משחק אטומית | מומש ונבדק — ממתין לאישור | לכל `Match` נוסף מזהה מופע ייחודי; `GameResult` מחזיק מנצח, סיבה ומשך משחק במילישניות. `Match.finish()` מנהלת את סדר הסיום: שמירת המשחק ושני עדכוני ELO בטרנזקציה אחת, סימון התוצאה ורק אז שליחת `GAME_OVER` ללקוחות. ניסיון שמירה חוזר אינו משנה שוב את הדירוגים. כל 385 בדיקות הפרויקט עוברות בכיסוי לוגיקה נמדדת של 100% |
 
 - ב-D1 החיבור ל-SQLite מוזרק ל-repositories. הם מבצעים SQL בלבד ואינם מבצעים `commit` בעצמם, כדי שב-D6 ניתן יהיה לעטוף את שמירת המשחק ושני עדכוני הדירוג בטרנזקציה אחת.
 - טבלת `users` תשמור גם `username_key` מנורמל וייחודי לצד שם התצוגה, כדי למנוע חשבונות כפולים שנבדלים רק באותיות גדולות או בייצוג Unicode.
 - בדיקות D1 ישתמשו ב-`sqlite3.connect(":memory:")`; חיבור לקובץ DB אמיתי ייעשה רק בשלב השילוב המאושר.
-- `server/dal/database.py`: `sqlite3` + `init_schema()` — טבלאות `users(id, username, username_key UNIQUE, password_hash, salt, rating DEFAULT 1200, created_at)`, `games(id, white_user_id, black_user_id, winner_color, ratings before/after, started_at, ended_at)`.
+- `server/dal/database.py`: `sqlite3` + `init_schema()` — טבלאות `users(id, username, username_key UNIQUE, password_hash, salt, rating DEFAULT 1200, created_at)`, `games(id, match_instance_id UNIQUE, white_user_id, black_user_id, winner_color, finish_reason, ratings before/after, duration_ms)`.
 - `server/dal/repository.py`: `UserRepository.get_by_username/create_user/update_rating` (מחזיר `UserDTO`), `GameRepository.record_game`.
 - `server/services/auth.py`: `register`/`login` — מגבב (`hashlib.pbkdf2_hmac`+`secrets.token_hex` salt), קורא ל-`server/dal/`, **לא נוגע ב-SQL**.
 - `server/services/elo.py`: `compute_elo(rating_a, rating_b, score_a, k=32)` — נוסחה סטנדרטית, פונקציה טהורה.
@@ -350,7 +350,7 @@ NetworkClient מקבל                                                    Networ
 | A — Bus | הושלם | כל אירועי המשחק עוברים ב-EventBus; צרכני ה-View והצלילים פועלים; בדיקות היחידה והרגרסיה ירוקות |
 | B — Network | הושלם ואושר — B1–B5 | שני לקוחות גרפיים מסונכרנים מול שרת סמכותי; serializer עובר round-trip; הרשאות צבע, קיבולת ו-request_id תקינים; אין דליפת אירועים בין משחקים; כל 214 הבדיקות ירוקות |
 | C — Username Login | הושלם ואושר — C1–C3 | login בשם משתמש, הקצאת White/Black, הצגת שמות בלוח והודעת `server_full` מאומתים מקצה לקצה |
-| D — Auth + SQLite + ELO | בתהליך — D1–D4 אושרו, D5 מומש וממתין לאישור | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
+| D — Auth + SQLite + ELO | D1–D5 הושלמו ואושרו; D6 מומש וממתין לאישור | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
 | E — Matchmaking + Disconnect | ממתין | התאמה בטווח ±100 ו-timeout; reconnect בחלון 20 שניות; countdown ו-auto-resign נבדקו |
 | F — Rooms + Spectators + Logs | ממתין | Create/Join/Cancel; שני שחקנים וצופים עם הרשאות נכונות; שני חדרים מבודדים; לוגי שרת/לקוח/משחק נוצרים ונסגרים כראוי |
 

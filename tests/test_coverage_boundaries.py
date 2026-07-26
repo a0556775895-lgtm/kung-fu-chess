@@ -2,7 +2,6 @@
 
 import asyncio
 from dataclasses import replace
-from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -271,17 +270,20 @@ def test_snapshot_serializer_rejects_invalid_nested_values():
 
 def test_repository_rejects_invalid_username_and_binary_fields():
     connection = connect_database(":memory:")
-    init_schema(connection)
-    repository = UserRepository(connection)
-    with pytest.raises(ValueError, match="INVALID_USERNAME"):
-        repository.get_by_username("")
-    with pytest.raises(ValueError, match="INVALID_PASSWORD_HASH"):
-        repository.create_user("Alice", "", b"salt")
-    with pytest.raises(ValueError, match="INVALID_SALT"):
-        repository.create_user("Alice", b"hash", b"")
-    with pytest.raises(Exception) as exc_info:
-        repository.create_user("Alice", b"hash", b"salt", rating=-1)
-    assert type(exc_info.value).__name__ == "IntegrityError"
+    try:
+        init_schema(connection)
+        repository = UserRepository(connection)
+        with pytest.raises(ValueError, match="INVALID_USERNAME"):
+            repository.get_by_username("")
+        with pytest.raises(ValueError, match="INVALID_PASSWORD_HASH"):
+            repository.create_user("Alice", "", b"salt")
+        with pytest.raises(ValueError, match="INVALID_SALT"):
+            repository.create_user("Alice", b"hash", b"")
+        with pytest.raises(Exception) as exc_info:
+            repository.create_user("Alice", b"hash", b"salt", rating=-1)
+        assert type(exc_info.value).__name__ == "IntegrityError"
+    finally:
+        connection.close()
 
 
 def test_unit_of_work_rejects_reentry_and_reuse_after_close():
@@ -327,11 +329,10 @@ def test_controller_rejects_unassigned_color_and_opponent_piece():
 
 
 def test_game_result_and_match_validate_lifecycle_inputs():
-    ended_at = datetime.now(timezone.utc)
     with pytest.raises(ValueError, match="INVALID_WINNER_COLOR"):
-        GameResult("w", FinishReason.KING_CAPTURE, ended_at)
+        GameResult("w", FinishReason.KING_CAPTURE, 1000)
     with pytest.raises(ValueError, match="INVALID_FINISH_REASON"):
-        GameResult(PieceColor.WHITE, "KING_CAPTURE", ended_at)
+        GameResult(PieceColor.WHITE, "KING_CAPTURE", 1000)
 
     with pytest.raises(ValueError, match="INVALID_GAME_ID"):
         Match("", SimpleNamespace(bus=EventBus()))

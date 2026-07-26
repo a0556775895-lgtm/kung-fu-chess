@@ -11,6 +11,10 @@ class DuplicateUsernameError(ValueError):
     """The normalized username key is already owned by another account."""
 
 
+class DuplicateGameCompletionError(ValueError):
+    """The same Match instance has already been persisted."""
+
+
 class UserRepository:
     """Persist and retrieve user accounts without owning transaction commits."""
 
@@ -91,44 +95,54 @@ class GameRepository:
     def record_game(
         self,
         *,
+        match_instance_id: str,
         white_user_id: int,
         black_user_id: int,
         winner_color: str,
+        finish_reason: str,
         white_rating_before: int,
         black_rating_before: int,
         white_rating_after: int,
         black_rating_after: int,
-        started_at: str,
-        ended_at: str,
+        duration_ms: int,
     ) -> GameDTO:
         """Insert one completed game and return its stored representation."""
-        cursor = self._connection.execute(
-            """
-            INSERT INTO games (
-                white_user_id,
-                black_user_id,
-                winner_color,
-                white_rating_before,
-                black_rating_before,
-                white_rating_after,
-                black_rating_after,
-                started_at,
-                ended_at
+        if not isinstance(match_instance_id, str) or not match_instance_id:
+            raise ValueError("INVALID_MATCH_INSTANCE_ID")
+        try:
+            cursor = self._connection.execute(
+                """
+                INSERT INTO games (
+                    match_instance_id,
+                    white_user_id,
+                    black_user_id,
+                    winner_color,
+                    finish_reason,
+                    white_rating_before,
+                    black_rating_before,
+                    white_rating_after,
+                    black_rating_after,
+                    duration_ms
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    match_instance_id,
+                    white_user_id,
+                    black_user_id,
+                    winner_color,
+                    finish_reason,
+                    white_rating_before,
+                    black_rating_before,
+                    white_rating_after,
+                    black_rating_after,
+                    duration_ms,
+                ),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                white_user_id,
-                black_user_id,
-                winner_color,
-                white_rating_before,
-                black_rating_before,
-                white_rating_after,
-                black_rating_after,
-                started_at,
-                ended_at,
-            ),
-        )
+        except sqlite3.IntegrityError as exc:
+            if self.get_by_match_instance_id(match_instance_id) is not None:
+                raise DuplicateGameCompletionError(match_instance_id) from exc
+            raise
         game = self.get_by_id(cursor.lastrowid)
         if game is None:  # pragma: no cover - defensive database consistency guard
             raise RuntimeError("CREATED_GAME_NOT_FOUND")
@@ -140,19 +154,46 @@ class GameRepository:
             """
             SELECT
                 id,
+                match_instance_id,
                 white_user_id,
                 black_user_id,
                 winner_color,
+                finish_reason,
                 white_rating_before,
                 black_rating_before,
                 white_rating_after,
                 black_rating_after,
-                started_at,
-                ended_at
+                duration_ms
             FROM games
             WHERE id = ?
             """,
             (game_id,),
+        ).fetchone()
+        return _game_from_row(row) if row is not None else None
+
+    def get_by_match_instance_id(
+        self,
+        match_instance_id: str,
+    ) -> GameDTO | None:
+        """Find the one persisted result for a Match lifecycle instance."""
+        row = self._connection.execute(
+            """
+            SELECT
+                id,
+                match_instance_id,
+                white_user_id,
+                black_user_id,
+                winner_color,
+                finish_reason,
+                white_rating_before,
+                black_rating_before,
+                white_rating_after,
+                black_rating_after,
+                duration_ms
+            FROM games
+            WHERE match_instance_id = ?
+            """,
+            (match_instance_id,),
         ).fetchone()
         return _game_from_row(row) if row is not None else None
 
@@ -182,13 +223,14 @@ def _user_from_row(row: sqlite3.Row) -> UserDTO:
 def _game_from_row(row: sqlite3.Row) -> GameDTO:
     return GameDTO(
         id=row["id"],
+        match_instance_id=row["match_instance_id"],
         white_user_id=row["white_user_id"],
         black_user_id=row["black_user_id"],
         winner_color=row["winner_color"],
+        finish_reason=row["finish_reason"],
         white_rating_before=row["white_rating_before"],
         black_rating_before=row["black_rating_before"],
         white_rating_after=row["white_rating_after"],
         black_rating_after=row["black_rating_after"],
-        started_at=row["started_at"],
-        ended_at=row["ended_at"],
+        duration_ms=row["duration_ms"],
     )

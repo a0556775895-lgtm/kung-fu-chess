@@ -1,7 +1,6 @@
 """In-memory integration tests across server routing, matches and broadcasting."""
 
 import asyncio
-from datetime import datetime, timezone
 
 import pytest
 
@@ -31,13 +30,21 @@ def make_engine():
     ]))
 
 
-def make_context(connection_id, game_id, color=PieceColor.WHITE, role=ConnectionRole.PLAYER, maxsize=256):
+def make_context(
+    connection_id,
+    game_id,
+    color=PieceColor.WHITE,
+    role=ConnectionRole.PLAYER,
+    maxsize=256,
+    user_id=None,
+):
     """Build a connection with a configurable bounded queue for backpressure tests."""
     return ConnectionContext(
         connection_id=connection_id,
         game_id=game_id,
         role=role,
         color=color,
+        user_id=user_id,
         outbound=asyncio.Queue(maxsize=maxsize),
     )
 
@@ -191,9 +198,8 @@ def test_arrival_event_uses_authoritative_engine_time():
 
 
 def test_match_records_king_capture_result_and_snapshot_winner():
-    ended_at = datetime(2026, 7, 24, 12, 0, tzinfo=timezone.utc)
     engine = GameEngine(BoardParser.parse(["wR bK"]))
-    match = Match("result-game", engine, now=lambda: ended_at)
+    match = Match("result-game", engine)
 
     assert engine.request_move(Position(0, 0), Position(0, 1)).is_accepted
     match.advance_time(1000)
@@ -201,7 +207,7 @@ def test_match_records_king_capture_result_and_snapshot_winner():
     assert match.result == GameResult(
         winner_color=PieceColor.WHITE,
         reason=FinishReason.KING_CAPTURE,
-        ended_at=ended_at,
+        duration_ms=1000,
     )
     assert engine.snapshot().winner_color == "w"
 
@@ -211,12 +217,12 @@ def test_match_finish_is_idempotent():
     first = GameResult(
         winner_color=PieceColor.WHITE,
         reason=FinishReason.RESIGN,
-        ended_at=datetime(2026, 7, 24, 12, 0, tzinfo=timezone.utc),
+        duration_ms=1000,
     )
     second = GameResult(
         winner_color=PieceColor.BLACK,
         reason=FinishReason.DISCONNECT,
-        ended_at=datetime(2026, 7, 24, 12, 1, tzinfo=timezone.utc),
+        duration_ms=2000,
     )
 
     assert match.finish(first) is True
@@ -224,10 +230,138 @@ def test_match_finish_is_idempotent():
     assert match.result is first
 
 
-def test_game_result_requires_timezone_aware_end_time():
-    with pytest.raises(ValueError, match="END_TIME_MUST_BE_TIMEZONE_AWARE"):
-        GameResult(
-            winner_color=PieceColor.WHITE,
-            reason=FinishReason.KING_CAPTURE,
-            ended_at=datetime(2026, 7, 24, 12, 0),
+def test_match_persists_authenticated_players_once_on_finish():
+    class CompletionRecorder:
+        def __init__(self):
+            self.calls = []
+
+        def complete(self, **arguments):
+            self.calls.append(arguments)
+
+    completion = CompletionRecorder()
+    match = Match(
+        "result-game",
+        make_engine(),
+        match_instance_id="instance-1",
+        completion_service=completion,
+    )
+    white = make_context(
+        "white",
+        "result-game",
+        color=PieceColor.WHITE,
+        user_id=10,
+    )
+    black = make_context(
+        "black",
+        "result-game",
+        color=PieceColor.BLACK,
+        user_id=20,
+    )
+    match.add_connection(white)
+    match.add_connection(black)
+    match.remove_connection(white.connection_id)
+    result = GameResult(
+        winner_color=PieceColor.BLACK,
+        reason=FinishReason.RESIGN,
+        duration_ms=300_000,
+    )
+
+    assert match.finish(result) is True
+    assert match.finish(result) is False
+    assert match.player_user_ids == {
+        PieceColor.WHITE: 10,
+        PieceColor.BLACK: 20,
+    }
+    assert completion.calls == [{
+        "match_instance_id": "instance-1",
+        "white_user_id": 10,
+        "black_user_id": 20,
+        "result": result,
+    }]
+    assert white.outbound.empty()
+    assert decode_event(black.outbound.get_nowait())["type"] == "GAME_OVER"
+    assert black.outbound.empty()
+
+
+def test_match_requires_both_authenticated_players_before_persistence():
+    completion = type(
+        "CompletionRecorder",
+        (),
+        {"complete": lambda self, **arguments: None},
+    )()
+    match = Match(
+        "result-game",
+        make_engine(),
+        completion_service=completion,
+    )
+    match.add_connection(make_context(
+        "white",
+        "result-game",
+        user_id=10,
+    ))
+    result = GameResult(
+        winner_color=PieceColor.WHITE,
+        reason=FinishReason.RESIGN,
+        duration_ms=0,
+    )
+
+    with pytest.raises(RuntimeError, match="AUTHENTICATED_PLAYERS_REQUIRED"):
+        match.finish(result)
+
+    assert match.result is None
+
+
+def test_match_does_not_notify_clients_when_persistence_fails():
+    class FailingCompletion:
+        def complete(self, **_arguments):
+            raise RuntimeError("database_failed")
+
+    engine = GameEngine(BoardParser.parse(["wR bK"]))
+    match = Match(
+        "result-game",
+        engine,
+        completion_service=FailingCompletion(),
+    )
+    white = make_context(
+        "white",
+        "result-game",
+        color=PieceColor.WHITE,
+        user_id=10,
+    )
+    black = make_context(
+        "black",
+        "result-game",
+        color=PieceColor.BLACK,
+        user_id=20,
+    )
+    match.add_connection(white)
+    match.add_connection(black)
+
+    assert engine.request_move(Position(0, 0), Position(0, 1)).is_accepted
+    drain(white)
+    drain(black)
+
+    with pytest.raises(RuntimeError, match="database_failed"):
+        match.advance_time(1000)
+
+    assert match.result is None
+    assert all(
+        decode_event(message)["type"] != "GAME_OVER"
+        for message in drain(white) + drain(black)
+    )
+
+
+@pytest.mark.parametrize("match_instance_id", ["", 123])
+def test_match_validates_persistence_identity(match_instance_id):
+    with pytest.raises(ValueError, match="INVALID_MATCH_INSTANCE_ID"):
+        Match(
+            "result-game",
+            make_engine(),
+            match_instance_id=match_instance_id,
         )
+
+
+@pytest.mark.parametrize("duration_ms", [True, -1, 1.5])
+def test_game_result_requires_non_negative_integer_duration(duration_ms):
+    with pytest.raises(ValueError, match="INVALID_GAME_DURATION"):
+        GameResult(PieceColor.WHITE, FinishReason.KING_CAPTURE, duration_ms)
