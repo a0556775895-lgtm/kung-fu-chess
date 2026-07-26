@@ -77,6 +77,7 @@ class NetworkClient:
         self._connected = False
         self._failure = None
         self._auth_response = None
+        self._session_token = None
         self._config_response = None
         self._initial_state = None
 
@@ -99,6 +100,13 @@ class NetworkClient:
         if self._auth_response is None:
             raise RuntimeError("client_not_started")
         return self._auth_response
+
+    @property
+    def session_token(self) -> str:
+        """Return the temporary token reserved for the future reconnect flow."""
+        if self._session_token is None:
+            raise RuntimeError("client_not_authenticated")
+        return self._session_token
 
     @property
     def initial_state(self):
@@ -218,6 +226,7 @@ class NetworkClient:
             self._auth_response = parse_auth_response(auth_message)
             if self._auth_response.request_id != auth_request.request_id:
                 raise ConnectionError("auth_request_id_mismatch")
+            self._session_token = self._auth_response.session_token
             #אחרי שהושלם האימות - יוצרת חיבור למשחק
             join = JoinRequest(f"join-{uuid.uuid4().hex}", self._requested_config)
             await websocket.send(encode_join(join))

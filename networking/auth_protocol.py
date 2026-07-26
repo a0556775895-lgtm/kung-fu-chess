@@ -44,6 +44,7 @@ class AuthResponse:
     user_id: int
     username: str
     rating: int
+    session_token: str = field(repr=False)
 
 
 def encode_register(request: RegisterRequest) -> str:
@@ -88,6 +89,7 @@ def encode_auth_ok(response: AuthResponse) -> str:
     _validate_response(response)
     payload = {
         "rating": response.rating,
+        "session_token": response.session_token,
         "user_id": response.user_id,
         "username": response.username,
     }
@@ -105,7 +107,7 @@ def parse_auth_response(message: str) -> AuthResponse:
     _, request_id, payload_text = parts
     _validate_request_id(request_id)
     payload = _decode_object(payload_text, "MALFORMED_AUTH_RESPONSE")
-    if set(payload) != {"user_id", "username", "rating"}:
+    if set(payload) != {"user_id", "username", "rating", "session_token"}:
         raise AuthProtocolError("MALFORMED_AUTH_RESPONSE")
 
     response = AuthResponse(
@@ -113,6 +115,7 @@ def parse_auth_response(message: str) -> AuthResponse:
         user_id=payload["user_id"],
         username=payload["username"],
         rating=payload["rating"],
+        session_token=payload["session_token"],
     )
     _validate_response(response)
     return response
@@ -154,6 +157,12 @@ def _validate_response(response: AuthResponse) -> None:
         or response.rating < 0
     ):
         raise AuthProtocolError("INVALID_RATING")
+    if (
+        not isinstance(response.session_token, str)
+        or not response.session_token
+        or len(response.session_token) > 256
+    ):
+        raise AuthProtocolError("INVALID_SESSION_TOKEN")
 
 
 def _validate_request_id(request_id: str) -> None:

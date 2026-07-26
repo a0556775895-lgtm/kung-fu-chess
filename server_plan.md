@@ -91,7 +91,7 @@ kung-fu-chess/
 │   │   ├── connection.py                ConnectionContext + תור יוצא מוגבל
 │   │   ├── broadcaster.py               ServerBroadcaster אחד per Match
 │   │   └── game_server.py               [חדש B3] websockets.serve(...), Reader/Writer
-│   ├── services/                      [חדש D–F] auth/active_user_registry/elo/matchmaker/rooms
+│   ├── services/                      [חדש D–F] auth/session_registry/elo/matchmaker/rooms
 │   ├── dal/                           [חדש D] Data Access Layer — אפס כללים עסקיים
 │   │   ├── database.py                  חיבור sqlite3 + init_schema()
 │   │   ├── repository.py                UserRepository + GameRepository
@@ -238,7 +238,7 @@ NetworkClient מקבל                                                    Networ
 
 | תת-שלב | סטטוס | תוצאה |
 |---|---|---|
-| C1 — חוזה Login ושמות פעילים | הושלם ואושר | `login_protocol.py` מגדיר `LOGIN`/`LOGIN_OK` וולידציית שם נפרדת מפרוטוקול המשחק; `ActiveUserRegistry` שומר שמות פעילים בזיכרון ומונע כפילות ללא תלות באותיות גדולות; כל 240 הבדיקות עברו |
+| C1 — חוזה Login ושמות פעילים | הושלם ואושר | `login_protocol.py` מגדיר `LOGIN`/`LOGIN_OK` וולידציית שם נפרדת מפרוטוקול המשחק; `ActiveUserRegistry` שמר שמות פעילים בזיכרון ומנע כפילות ללא תלות באותיות גדולות, ובהמשך הוחלף ב־E1 על ידי `SessionRegistry`; כל 240 הבדיקות עברו |
 | C2 — Login לפני JOIN בשרת | הושלם ואושר | `GameServer` מחייב `LOGIN` לפני `JOIN`, מונע שם פעיל כפול, משייך את השם ל-`ConnectionContext` ומשחרר אותו בכל התנתקות או כשל; 240 בדיקות עברו ו-3 בדיקות הלקוח הישן ממתינות לחיבור `LOGIN` ב-C3 |
 | C3 — CLI ושילוב בלקוח | הושלם ואושר | `cli_login.py` מבקש ומוודא שם משתמש לפני פתיחת המשחק; `NetworkClient` מבצע `LOGIN` לפני `JOIN`; שמות שני השחקנים עוברים ב-snapshot ומוצגים לצד הניקוד במקום White/Black; כל 248 הבדיקות עברו והתצוגה אושרה |
 
@@ -251,7 +251,7 @@ NetworkClient מקבל                                                    Networ
 | D3 — פרוטוקול Register/Login ושילוב בלקוח | הושלם ואושר | `auth_protocol.py` מגדיר `REGISTER`/`LOGIN`/`AUTH_OK`; ה-CLI קולט סיסמה מוסתרת; `GameServer` מפעיל `AuthService` מול SQLite לפני `JOIN`; זהות DB ושם תצוגה נשמרים בנפרד. כל 273 הבדיקות עוברות |
 | D4 — תוצאת משחק מפורשת | הושלם ואושר | `GameResult` שומר מנצח, סיבת סיום וזמן UTC; תפיסת מלך מתנקזת ל-`Match.finish()` פעם אחת; המנצח נכלל ב-snapshot ומוצגת תמונת הסיום המתאימה בלקוח. כל 349 הבדיקות עוברות וכיסוי הלוגיקה הנמדדת הוא 100% |
 | D5 — חישוב ELO | הושלם ואושר | `calculate_elo()` מחשבת דירוגים חדשים בפונקציה טהורה עם `K=32`, שומרת על סכום הדירוגים ומטפלת בניצחון צפוי או בהפתעה; 15 בדיקות D5 וכל 364 בדיקות הפרויקט עוברות בכיסוי לוגיקה נמדדת של 100% |
-| D6 — שמירת סיום משחק אטומית | מומש ונבדק — ממתין לאישור | לכל `Match` נוסף מזהה מופע ייחודי; `GameResult` מחזיק מנצח, סיבה ומשך משחק במילישניות. `Match.finish()` מנהלת את סדר הסיום: שמירת המשחק ושני עדכוני ELO בטרנזקציה אחת, סימון התוצאה ורק אז שליחת `GAME_OVER` ללקוחות. ניסיון שמירה חוזר אינו משנה שוב את הדירוגים. כל 385 בדיקות הפרויקט עוברות בכיסוי לוגיקה נמדדת של 100% |
+| D6 — שמירת סיום משחק אטומית | הושלם ואושר | לכל `Match` נוסף מזהה מופע ייחודי; `GameResult` מחזיק מנצח, סיבה ומשך משחק במילישניות. `Match.finish()` מנהלת את סדר הסיום: שמירת המשחק ושני עדכוני ELO בטרנזקציה אחת, סימון התוצאה ורק אז שליחת `GAME_OVER` ללקוחות. ניסיון שמירה חוזר אינו משנה שוב את הדירוגים. כל 385 בדיקות הפרויקט עוברות בכיסוי לוגיקה נמדדת של 100% |
 
 - ב-D1 החיבור ל-SQLite מוזרק ל-repositories. הם מבצעים SQL בלבד ואינם מבצעים `commit` בעצמם, כדי שב-D6 ניתן יהיה לעטוף את שמירת המשחק ושני עדכוני הדירוג בטרנזקציה אחת.
 - טבלת `users` תשמור גם `username_key` מנורמל וייחודי לצד שם התצוגה, כדי למנוע חשבונות כפולים שנבדלים רק באותיות גדולות או בייצוג Unicode.
@@ -261,15 +261,21 @@ NetworkClient מקבל                                                    Networ
 - `server/services/auth.py`: `register`/`login` — מגבב (`hashlib.pbkdf2_hmac`+`secrets.token_hex` salt), קורא ל-`server/dal/`, **לא נוגע ב-SQL**.
 - `server/services/elo.py`: `compute_elo(rating_a, rating_b, score_a, k=32)` — נוסחה סטנדרטית, פונקציה טהורה.
 - `server/transport/game_server.py` מפנה `REGISTER`/`LOGIN` ל-`server/services/auth.py` כחלק מה-handshake. `GameController` נשאר אחראי רק לפקודות משחק ואינו תלוי ב-DB או בסיסמאות.
-- **שינוי BLL קטן**: `GameEngine` לא מדווח היום מי ניצח. מוסיף `winner_color` property (Protocol `on_game_over()` לא משתנה) — `server/game/match.py` קורא לזה בסיום, מזין ל-`elo.compute_elo` ואז ל-DAL.
-- תוצאת משחק היא אובייקט מפורש הכולל `winner_color`, סיבה (`KING_CAPTURE`/`RESIGN`/`DISCONNECT`) וזמן סיום. כל מסלולי הסיום עוברים דרך `Match.finish(result)` אידמפוטנטי, כדי ששמירת המשחק ועדכון ELO יתבצעו פעם אחת בלבד ובטרנזקציה אחת.
+- **שינוי BLL קטן**: `GameEngine` מדווח מי ניצח דרך `winner_color` בלי לשנות את Protocol `on_game_over()`; `server/game/match.py` יוצר את תוצאת המשחק ו-`GameCompletionService` מפעילה את `calculate_elo()` ושומרת דרך ה-DAL.
+- תוצאת משחק היא אובייקט מפורש הכולל `winner_color`, סיבה (`KING_CAPTURE`/`RESIGN`/`DISCONNECT`) ומשך משחק במילישניות. כל מסלולי הסיום עוברים דרך `Match.finish(result)` אידמפוטנטי, כדי ששמירת המשחק ועדכון ELO יתבצעו פעם אחת בלבד ובטרנזקציה אחת, לפני שליחת `GAME_OVER` ללקוחות.
 
 ### שלב E — Matchmaking + ניתוקים (שקף 6)
-- `server/services/matchmaker.py`: `find_or_wait(player)` — התאמה בטווח ±100; אם לא — `asyncio.sleep` עד 60 שניות ואז `MATCH TIMEOUT`. בדיקת timeout מבודדת בפונקציה טהורה (`has_timed_out`) לבדיקה בלי `sleep` אמיתי. עם התאמה — **יוצר `Match` חדש ורושם אותו ב-`game_registry`** (כאן, לראשונה, ה-registry מקבל יותר ממשחק אחד בפועל).
-- ניתוק: `server/game/match.py` תופס `ConnectionClosed`, פותח טיימר 20 שניות, משדר `EVENT DISCONNECT <sec>` (מוגבל לאותו משחק), ואם חולף — קורא ל-`GameEngine.resign(color)` (חדש, מקביל ל"מלך נתפס").
-- זיהוי ניתוק נעשה באמצעות ping/pong של WebSocket ו-timeout, ולא באמצעות קידום זמן משחק בצד הלקוח. הלקוח עובר בין `CONNECTED`/`UNSTABLE`/`DISCONNECTED`/`RECONNECTING`, חוסם פקודות משחק כשהקשר אבד ומציג את מצב החיבור.
-- login מוצלח מחזיר `session_token` זמני. בתוך חלון החסד הלקוח שולח `RECONNECT <session_token>`; השרת משייך את החיבור החדש לאותו משתמש, Match וצבע, מבטל resign ושולח snapshot מלא.
-- `view/hud/countdown/`: ספירה לאחור על המסך.
+
+| תת-שלב | סטטוס | תוצאה מתוכננת |
+|---|---|---|
+| E1 — Session token ו-SessionRegistry | הושלם ואושר | `SessionRegistry` מחליף את רישום השמות הפעילים, מחזיק `ActiveSession` לפי token ושם מנורמל ומונע חיבור כפול. `AUTH_OK` מחזיר token אקראי והלקוחה שומרת אותו; עדיין אין reconnect. כל 390 בדיקות הפרויקט עוברות בכיסוי לוגיקה נמדדת של 100% |
+| E2 — Matchmaker דרך JOIN הקיים | ממתין | `JOIN` מכניס לתור; התאמה בטווח דירוג ±100 יוצרת `Match` עם `game_id` ייחודי ב-`GameRegistry`; המתנה של 60 שניות מסתיימת ב-timeout |
+| E3 — ניתוק, countdown ו-RECONNECT בשרת | ממתין | ניתוק מסיר רק את החיבור החי ושומר session, צבע ומקום במשחק ל-20 שניות; reconnect מחבר WebSocket חדש ושולח snapshot מלא; פקיעת הזמן עוברת דרך `Match.finish(...DISCONNECT...)` |
+| E4 — Reconnect בלקוחה ובדיקות E2E | ממתין | `NetworkClient` משתמשת ב-token, חוסמת פקודות בזמן reconnect ומציגה countdown; נבדקים timeout, reconnect, הפסד בניתוק, ELO ושני משחקים מבודדים |
+
+- נשתמש ב-`JOIN` ובמעטפת `EVENT` הקיימים ולא נוסיף פקודת `PLAY`.
+- ספריית WebSocket תישאר אחראית לזיהוי אובדן הקשר; לא ייבנה מנגנון ping/pong מקביל.
+- שעון המשחק ימשיך להתקדם בזמן ניתוק. אם חלון החסד פג, סיום המשחק יעבור דרך `Match.finish()` הקיים ולא דרך `GameEngine.resign()` חדש.
 
 ### שלב F — חדרים + צופים + לוגים (שקף 7)
 - `client/room_dialog.py`: חלון Tkinter (Entry + Create/Join/Cancel), רץ ומסתיים **לפני** פתיחת ה-OpenCV.
@@ -350,7 +356,7 @@ NetworkClient מקבל                                                    Networ
 | A — Bus | הושלם | כל אירועי המשחק עוברים ב-EventBus; צרכני ה-View והצלילים פועלים; בדיקות היחידה והרגרסיה ירוקות |
 | B — Network | הושלם ואושר — B1–B5 | שני לקוחות גרפיים מסונכרנים מול שרת סמכותי; serializer עובר round-trip; הרשאות צבע, קיבולת ו-request_id תקינים; אין דליפת אירועים בין משחקים; כל 214 הבדיקות ירוקות |
 | C — Username Login | הושלם ואושר — C1–C3 | login בשם משתמש, הקצאת White/Black, הצגת שמות בלוח והודעת `server_full` מאומתים מקצה לקצה |
-| D — Auth + SQLite + ELO | D1–D5 הושלמו ואושרו; D6 מומש וממתין לאישור | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
+| D — Auth + SQLite + ELO | הושלם ואושר — D1–D6 | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
 | E — Matchmaking + Disconnect | ממתין | התאמה בטווח ±100 ו-timeout; reconnect בחלון 20 שניות; countdown ו-auto-resign נבדקו |
 | F — Rooms + Spectators + Logs | ממתין | Create/Join/Cancel; שני שחקנים וצופים עם הרשאות נכונות; שני חדרים מבודדים; לוגי שרת/לקוח/משחק נוצרים ונסגרים כראוי |
 

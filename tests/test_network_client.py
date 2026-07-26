@@ -47,6 +47,7 @@ def test_network_client_completes_join_before_start_returns(auth_service):
             assert client.is_connected
             assert client.auth_response.username == "Alice"
             assert client.auth_response.rating == 1200
+            assert client.session_token == client.auth_response.session_token
             assert client.config_response.effective_config == STANDARD_GAME_CONFIG
             assert not client.config_response.was_overridden
             assert client.initial_state.assigned_color == "w"

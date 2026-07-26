@@ -18,7 +18,7 @@ from server.game.admission import GameAdmission
 from server.game.controller import GameController
 from server.game.game_registry import GameRegistry
 from server.game.tick_loop import run_tick_loop
-from server.services.active_user_registry import ActiveUserRegistry
+from server.services.session_registry import SessionRegistry
 from server.services.auth import AuthError
 from server.transport.connection_io import run_connection_io
 
@@ -31,7 +31,7 @@ class GameServer:
         host: str = config.HOST,
         port: int = config.PORT,
         registry=None,
-        active_users=None,
+        session_registry=None,
         auth_service=None,
         completion_service=None,
     ):
@@ -42,8 +42,8 @@ class GameServer:
         self._server: Server | None = None
         self._tick_task = None
         self._registry = registry if registry is not None else GameRegistry()
-        self._active_users = (
-            active_users if active_users is not None else ActiveUserRegistry()
+        self._sessions = (
+            session_registry if session_registry is not None else SessionRegistry()
         )
         self._auth_service = auth_service
         self._admission = GameAdmission(
@@ -95,7 +95,7 @@ class GameServer:
     async def _handle_connection(self, connection: ServerConnection) -> None:
         """Require account authentication before JOIN and authorized game I/O."""
         context = None
-        claimed_username = None
+        session = None
         try:
             try:
                 auth_request = parse_auth_request(await connection.recv())
@@ -122,14 +122,18 @@ class GameServer:
                 await connection.close(code=1008, reason="authentication_rejected")
                 return
 
-            if not self._active_users.claim(user.username):
+            session = self._sessions.create(
+                user.id,
+                user.username,
+                user.rating,
+            )
+            if session is None:
                 await connection.send(
                     encode_error(auth_request.request_id, "user_already_connected")
                 )
                 await connection.close(code=1008, reason="user_already_connected")
                 return
 
-            claimed_username = user.username
             await connection.send(
                 encode_auth_ok(
                     AuthResponse(
@@ -137,6 +141,7 @@ class GameServer:
                         user_id=user.id,
                         username=user.username,
                         rating=user.rating,
+                        session_token=session.token,
                     )
                 )
             )
@@ -153,6 +158,7 @@ class GameServer:
                 websocket=connection,
                 user_id=user.id,
                 username=user.username,
+                session_token=session.token,
             )
             if not result.is_accepted:
                 await connection.send(result.rejection)
@@ -166,5 +172,5 @@ class GameServer:
         finally:
             if context is not None:
                 self._admission.release(context)
-            if claimed_username is not None:
-                self._active_users.release(claimed_username)
+            if session is not None:
+                self._sessions.release(session.token)

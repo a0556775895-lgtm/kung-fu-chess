@@ -25,7 +25,7 @@ from networking.protocol import (
 )
 from server.transport.game_server import GameServer
 from server.game.game_registry import GameRegistry
-from server.services.active_user_registry import ActiveUserRegistry
+from server.services.session_registry import SessionRegistry
 
 
 PASSWORD = "correct horse battery"
@@ -90,6 +90,7 @@ def test_game_server_accepts_real_websocket_join(auth_service):
                     auth_response.user_id,
                     "Alice",
                     1200,
+                    auth_response.session_token,
                 )
                 assert config_response.was_overridden is False
                 assert state.assigned_color == "w"
@@ -237,6 +238,7 @@ def test_game_server_assigns_authenticated_identity_to_connection_context(
                 context = registry.get("default").connections()[0]
                 assert context.user_id == auth_response.user_id
                 assert context.username == "Alice"
+                assert context.session_token == auth_response.session_token
         finally:
             await server.close()
 
@@ -245,10 +247,10 @@ def test_game_server_assigns_authenticated_identity_to_connection_context(
 
 def test_game_server_rejects_duplicate_active_account(auth_service):
     async def scenario():
-        active_users = ActiveUserRegistry()
+        sessions = SessionRegistry()
         server = GameServer(
             port=0,
-            active_users=active_users,
+            session_registry=sessions,
             auth_service=auth_service,
         )
         await server.start()
@@ -268,21 +270,21 @@ def test_game_server_rejects_duplicate_active_account(auth_service):
                     assert response.request_id == "login-second"
                     assert response.reason == "user_already_connected"
                     assert second.close_code == 1008
-                    assert active_users.active_usernames() == ("Alice",)
+                    assert sessions.active_usernames() == ("Alice",)
         finally:
             await server.close()
 
-        assert len(active_users) == 0
+        assert len(sessions) == 0
 
     asyncio.run(scenario())
 
 
 def test_game_server_releases_username_when_join_is_malformed(auth_service):
     async def scenario():
-        active_users = ActiveUserRegistry()
+        sessions = SessionRegistry()
         server = GameServer(
             port=0,
-            active_users=active_users,
+            session_registry=sessions,
             auth_service=auth_service,
         )
         await server.start()
@@ -302,7 +304,7 @@ def test_game_server_releases_username_when_join_is_malformed(auth_service):
         finally:
             await server.close()
 
-        assert len(active_users) == 0
+        assert len(sessions) == 0
 
     asyncio.run(scenario())
 

@@ -487,6 +487,8 @@ def test_network_client_unavailable_state_and_invalid_timeouts():
     for property_name in ("auth_response", "config_response", "initial_state"):
         with pytest.raises(RuntimeError, match="client_not_started"):
             getattr(client, property_name)
+    with pytest.raises(RuntimeError, match="client_not_authenticated"):
+        _ = client.session_token
     with pytest.raises(ValueError, match="INVALID_START_TIMEOUT"):
         client.start(timeout=0)
     with pytest.raises(ValueError, match="INVALID_CLOSE_TIMEOUT"):
@@ -629,7 +631,15 @@ class _FakeClientWebSocket:
     [
         ("ERR another-request invalid_credentials", "auth_request_id_mismatch"),
         (
-            encode_auth_ok(AuthResponse("another-request", 1, "Alice", 1200)),
+            encode_auth_ok(
+                AuthResponse(
+                    "another-request",
+                    1,
+                    "Alice",
+                    1200,
+                    "session-token",
+                )
+            ),
             "auth_request_id_mismatch",
         ),
     ],
@@ -653,7 +663,9 @@ def test_network_client_rejects_mismatched_auth_request_id(
 
 
 def test_network_client_propagates_reader_task_failure(monkeypatch):
-    auth = encode_auth_ok(AuthResponse("login-fixed", 1, "Alice", 1200))
+    auth = encode_auth_ok(
+        AuthResponse("login-fixed", 1, "Alice", 1200, "session-token")
+    )
     config = encode_config_accepted("join-fixed", STANDARD_GAME_CONFIG)
     state = encode_state(_snapshot())
     websocket = _FakeClientWebSocket(

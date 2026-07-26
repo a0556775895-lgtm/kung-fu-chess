@@ -54,6 +54,7 @@ class GameAdmission:
         websocket=None,
         user_id: int | None = None,
         username: str | None = None,
+        session_token: str | None = None,
     ) -> AdmissionResult:
         """Atomically create/find the Match, assign a free color, and queue initial messages."""
         async with self._lock:
@@ -80,6 +81,7 @@ class GameAdmission:
                 color=color,
                 user_id=user_id,
                 username=username,
+                session_token=session_token,
                 websocket=websocket,
             )
             match.add_connection(context)
