@@ -26,8 +26,8 @@ from server.transport.game_server import GameServer
 PASSWORD = "correct horse battery"
 
 
-async def _join(websocket, request_id, requested_config=STANDARD_GAME_CONFIG):
-    """Send JOIN and return the server's config decision and initial state."""
+async def _send_join(websocket, request_id, requested_config=STANDARD_GAME_CONFIG):
+    """Authenticate and place one real socket in matchmaking."""
     username = request_id.replace("join", "user")
     await websocket.send(
         encode_register(
@@ -36,9 +36,30 @@ async def _join(websocket, request_id, requested_config=STANDARD_GAME_CONFIG):
     )
     parse_auth_response(await websocket.recv())
     await websocket.send(encode_join(JoinRequest(request_id, requested_config)))
+
+
+async def _receive_admission(websocket):
+    """Receive a decision and snapshot after a compatible opponent arrives."""
     decision = parse_config_response(await websocket.recv())
     state = decode_state(await websocket.recv())
     return decision, state
+
+
+async def _join_pair(
+    first,
+    second,
+    first_config=STANDARD_GAME_CONFIG,
+    second_config=STANDARD_GAME_CONFIG,
+    first_id="join-first",
+    second_id="join-second",
+):
+    """Admit two sockets into one newly created match."""
+    await _send_join(first, first_id, first_config)
+    await _send_join(second, second_id, second_config)
+    return await asyncio.gather(
+        _receive_admission(first),
+        _receive_admission(second),
+    )
 
 
 async def _receive_responses(websocket, expected_ids, timeout=2.0):
@@ -69,15 +90,20 @@ def test_black_client_cannot_forge_white_move_over_websocket(auth_service):
         try:
             uri = f"ws://127.0.0.1:{server.bound_port}"
             async with connect(uri) as white, connect(uri) as black:
-                await _join(white, "join-white")
-                await _join(black, "join-black")
+                admissions = await _join_pair(
+                    white,
+                    black,
+                    first_id="join-white",
+                    second_id="join-black",
+                )
 
                 await black.send("MOVE forged-white WPe2e3")
                 responses = await _receive_responses(black, {"forged-white"})
 
                 assert not responses["forged-white"].accepted
                 assert responses["forged-white"].reason == "wrong_color"
-                authoritative = registry.get("default").engine.snapshot()
+                game_id = admissions[0][1].game_id
+                authoritative = registry.get(game_id).engine.snapshot()
                 white_pawn = next(
                     piece for piece in authoritative.pieces if piece.cell == Position(6, 4)
                 )
@@ -89,44 +115,38 @@ def test_black_client_cannot_forge_white_move_over_websocket(auth_service):
     asyncio.run(scenario())
 
 
-def test_third_websocket_client_is_rejected_as_server_full(auth_service):
+def test_four_clients_are_split_into_two_isolated_matches(auth_service):
     async def scenario():
         server = GameServer(port=0, auth_service=auth_service)
         await server.start()
         try:
             uri = f"ws://127.0.0.1:{server.bound_port}"
-            async with connect(uri) as first, connect(uri) as second:
-                await _join(first, "join-first")
-                await _join(second, "join-second")
+            async with (
+                connect(uri) as first,
+                connect(uri) as second,
+                connect(uri) as third,
+                connect(uri) as fourth,
+            ):
+                first_pair = await _join_pair(first, second)
+                second_pair = await _join_pair(
+                    third,
+                    fourth,
+                    first_id="join-third",
+                    second_id="join-fourth",
+                )
 
-                async with connect(uri) as third:
-                    await third.send(
-                        encode_register(
-                            RegisterRequest(
-                                "register-third",
-                                "user-third",
-                                PASSWORD,
-                            )
-                        )
-                    )
-                    parse_auth_response(await third.recv())
-                    await third.send(encode_join(
-                        JoinRequest("join-third", STANDARD_GAME_CONFIG)
-                    ))
-                    response = parse_command_response(await third.recv())
-                    await asyncio.wait_for(third.wait_closed(), timeout=1.0)
-
-                    assert response.request_id == "join-third"
-                    assert not response.accepted
-                    assert response.reason == "server_full"
-                    assert third.close_code == 1008
+                first_game_ids = {result[1].game_id for result in first_pair}
+                second_game_ids = {result[1].game_id for result in second_pair}
+                assert len(first_game_ids) == len(second_game_ids) == 1
+                assert first_game_ids.isdisjoint(second_game_ids)
+                assert len(server._registry) == 2
         finally:
             await server.close()
 
     asyncio.run(scenario())
 
 
-def test_second_client_receives_authoritative_config_override_over_websocket(
+def test_unsupported_config_is_rejected_without_removing_waiting_player(
     auth_service,
 ):
     async def scenario():
@@ -134,16 +154,28 @@ def test_second_client_receives_authoritative_config_override_over_websocket(
         await server.start()
         try:
             uri = f"ws://127.0.0.1:{server.bound_port}"
-            async with connect(uri) as first, connect(uri) as second:
-                await _join(first, "join-first")
+            async with (
+                connect(uri) as first,
+                connect(uri) as rejected,
+                connect(uri) as replacement,
+            ):
                 requested = GameConfig(1, 10, 10, "standard")
+                await _send_join(first, "join-first")
+                await _send_join(rejected, "join-rejected", requested)
 
-                decision, state = await _join(second, "join-second", requested)
+                rejection = parse_command_response(await rejected.recv())
+                await asyncio.wait_for(rejected.wait_closed(), timeout=1.0)
+                assert not rejection.accepted
+                assert rejection.request_id == "join-rejected"
+                assert rejection.reason == "unsupported_game_config"
 
-                assert decision.was_overridden
-                assert decision.effective_config == STANDARD_GAME_CONFIG
-                assert (state.board_height, state.board_width) == (8, 8)
-                assert state.assigned_color == "b"
+                await _send_join(replacement, "join-replacement")
+                (first_result, replacement_result) = await asyncio.gather(
+                    _receive_admission(first),
+                    _receive_admission(replacement),
+                )
+                assert first_result[1].game_id == replacement_result[1].game_id
+                assert replacement_result[1].assigned_color == "b"
         finally:
             await server.close()
 
@@ -156,8 +188,13 @@ def test_interleaved_messages_preserve_command_request_ids(auth_service):
         await server.start()
         try:
             uri = f"ws://127.0.0.1:{server.bound_port}"
-            async with connect(uri) as websocket:
-                await _join(websocket, "join-white")
+            async with connect(uri) as websocket, connect(uri) as opponent:
+                await _join_pair(
+                    websocket,
+                    opponent,
+                    first_id="join-white",
+                    second_id="join-black",
+                )
 
                 await websocket.send("MOVE move-request WPe2e3")
                 await websocket.send("JUMP jump-request WPe2")

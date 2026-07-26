@@ -45,6 +45,37 @@ async def _login(websocket, username="Alice", request_id="login-1"):
     return parse_auth_response(await websocket.recv())
 
 
+async def _send_join(
+    websocket,
+    username,
+    request_id,
+    requested_config=STANDARD_GAME_CONFIG,
+):
+    """Authenticate one socket and place its session in matchmaking."""
+    await _register(websocket, username, f"register-{request_id}")
+    await websocket.send(
+        encode_join(JoinRequest(request_id, requested_config))
+    )
+
+
+async def _receive_admission(websocket):
+    """Receive the personalized config decision and initial game snapshot."""
+    return (
+        parse_config_response(await websocket.recv()),
+        decode_state(await websocket.recv()),
+    )
+
+
+async def _join_pair(first, second):
+    """Queue two authenticated sockets and return both admission results."""
+    await _send_join(first, "Alice", "join-first")
+    await _send_join(second, "Bob", "join-second")
+    return await asyncio.gather(
+        _receive_admission(first),
+        _receive_admission(second),
+    )
+
+
 def test_game_server_starts_on_ephemeral_port_and_closes(auth_service):
     async def scenario():
         server = GameServer(port=0, auth_service=auth_service)
@@ -78,23 +109,30 @@ def test_game_server_accepts_real_websocket_join(auth_service):
         server = GameServer(port=0, auth_service=auth_service)
         await server.start()
         try:
-            async with connect(f"ws://127.0.0.1:{server.bound_port}") as websocket:
-                auth_response = await _register(websocket)
-                await websocket.send(encode_join(JoinRequest("join-1", STANDARD_GAME_CONFIG)))
-
-                config_response = parse_config_response(await websocket.recv())
-                state = decode_state(await websocket.recv())
+            uri = f"ws://127.0.0.1:{server.bound_port}"
+            async with connect(uri) as first, connect(uri) as second:
+                await _send_join(first, "Alice", "join-first")
+                auth_response = await _register(second, "Bob", "register-second")
+                await second.send(
+                    encode_join(JoinRequest("join-second", STANDARD_GAME_CONFIG))
+                )
+                (config_response, state), (_, second_state) = await asyncio.gather(
+                    _receive_admission(first),
+                    _receive_admission(second),
+                )
 
                 assert auth_response == AuthResponse(
                     auth_response.request_id,
                     auth_response.user_id,
-                    "Alice",
+                    "Bob",
                     1200,
                     auth_response.session_token,
                 )
                 assert config_response.was_overridden is False
                 assert state.assigned_color == "w"
-                assert state.game_id == "default"
+                assert second_state.assigned_color == "b"
+                assert state.game_id == second_state.game_id
+                assert state.game_id
         finally:
             await server.close()
 
@@ -106,12 +144,9 @@ def test_game_server_processes_move_through_reader_and_writer(auth_service):
         server = GameServer(port=0, auth_service=auth_service)
         await server.start()
         try:
-            async with connect(f"ws://127.0.0.1:{server.bound_port}") as websocket:
-                await _register(websocket)
-                await websocket.send(encode_join(JoinRequest("join-1", STANDARD_GAME_CONFIG)))
-                parse_config_response(await websocket.recv())
-                decode_state(await websocket.recv())
-
+            uri = f"ws://127.0.0.1:{server.bound_port}"
+            async with connect(uri) as websocket, connect(uri) as opponent:
+                await _join_pair(websocket, opponent)
                 await websocket.send("MOVE move-1 WPe2e3")
                 event_message = state_message = response_message = None
                 while None in (event_message, state_message, response_message):
@@ -139,12 +174,9 @@ def test_game_server_returns_error_for_malformed_command_after_join(auth_service
         server = GameServer(port=0, auth_service=auth_service)
         await server.start()
         try:
-            async with connect(f"ws://127.0.0.1:{server.bound_port}") as websocket:
-                await _register(websocket)
-                await websocket.send(encode_join(JoinRequest("join-1", STANDARD_GAME_CONFIG)))
-                await websocket.recv()
-                await websocket.recv()
-
+            uri = f"ws://127.0.0.1:{server.bound_port}"
+            async with connect(uri) as websocket, connect(uri) as opponent:
+                await _join_pair(websocket, opponent)
                 await websocket.send("NOT_A_COMMAND")
 
                 message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
@@ -170,15 +202,14 @@ def test_game_server_removes_connection_after_websocket_closes(auth_service):
         )
         await server.start()
         try:
-            async with connect(f"ws://127.0.0.1:{server.bound_port}") as websocket:
-                await _register(websocket)
-                await websocket.send(encode_join(JoinRequest("join-1", STANDARD_GAME_CONFIG)))
-                await websocket.recv()
-                await websocket.recv()
+            uri = f"ws://127.0.0.1:{server.bound_port}"
+            async with connect(uri) as websocket, connect(uri) as opponent:
+                admissions = await _join_pair(websocket, opponent)
+                game_id = admissions[0][1].game_id
         finally:
             await server.close()
 
-        assert registry.get("default").connections() == ()
+        assert registry.get(game_id).connections() == ()
 
     asyncio.run(scenario())
 
@@ -188,11 +219,9 @@ def test_game_server_tick_completes_move_and_sends_arrival_state(auth_service):
         server = GameServer(port=0, auth_service=auth_service)
         await server.start()
         try:
-            async with connect(f"ws://127.0.0.1:{server.bound_port}") as websocket:
-                await _register(websocket)
-                await websocket.send(encode_join(JoinRequest("join-1", STANDARD_GAME_CONFIG)))
-                await websocket.recv()
-                await websocket.recv()
+            uri = f"ws://127.0.0.1:{server.bound_port}"
+            async with connect(uri) as websocket, connect(uri) as opponent:
+                await _join_pair(websocket, opponent)
                 await websocket.send("MOVE timed-move WPe2e3")
 
                 saw_arrival = False
@@ -229,13 +258,23 @@ def test_game_server_assigns_authenticated_identity_to_connection_context(
         )
         await server.start()
         try:
-            async with connect(f"ws://127.0.0.1:{server.bound_port}") as websocket:
+            uri = f"ws://127.0.0.1:{server.bound_port}"
+            async with connect(uri) as websocket, connect(uri) as opponent:
                 auth_response = await _register(websocket, "Alice")
-                await websocket.send(encode_join(JoinRequest("join-1", STANDARD_GAME_CONFIG)))
-                await websocket.recv()
-                await websocket.recv()
+                await websocket.send(
+                    encode_join(JoinRequest("join-first", STANDARD_GAME_CONFIG))
+                )
+                await _send_join(opponent, "Bob", "join-second")
+                (_, state), _ = await asyncio.gather(
+                    _receive_admission(websocket),
+                    _receive_admission(opponent),
+                )
 
-                context = registry.get("default").connections()[0]
+                context = next(
+                    context
+                    for context in registry.get(state.game_id).connections()
+                    if context.username == "Alice"
+                )
                 assert context.user_id == auth_response.user_id
                 assert context.username == "Alice"
                 assert context.session_token == auth_response.session_token
@@ -335,6 +374,65 @@ def test_game_server_rejects_duplicate_registration(auth_service):
                 assert response.request_id == "register-duplicate"
                 assert response.reason == "username_taken"
         finally:
+            await server.close()
+
+    asyncio.run(scenario())
+
+
+def test_game_server_returns_match_timeout_for_waiting_player(auth_service):
+    async def scenario():
+        server = GameServer(
+            port=0,
+            auth_service=auth_service,
+            match_timeout_seconds=0.01,
+        )
+        await server.start()
+        try:
+            async with connect(
+                f"ws://127.0.0.1:{server.bound_port}"
+            ) as websocket:
+                await _send_join(websocket, "Alice", "join-timeout")
+
+                response = parse_command_response(await websocket.recv())
+                await asyncio.wait_for(websocket.wait_closed(), timeout=1.0)
+
+                assert not response.accepted
+                assert response.request_id == "join-timeout"
+                assert response.reason == "match_timeout"
+                assert websocket.close_code == 1008
+                assert server._matchmaker.waiting_count == 0
+        finally:
+            await server.close()
+
+    asyncio.run(scenario())
+
+
+def test_game_server_removes_player_who_disconnects_while_waiting(auth_service):
+    async def scenario():
+        server = GameServer(
+            port=0,
+            auth_service=auth_service,
+            match_timeout_seconds=1.0,
+        )
+        await server.start()
+        websocket = await connect(f"ws://127.0.0.1:{server.bound_port}")
+        try:
+            await _send_join(websocket, "Alice", "join-disconnect")
+            deadline = asyncio.get_running_loop().time() + 1.0
+            while server._matchmaker.waiting_count != 1:
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise TimeoutError("player did not enter matchmaking")
+                await asyncio.sleep(0.01)
+
+            await websocket.close()
+            while server._matchmaker.waiting_count:
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise TimeoutError("disconnected player remained queued")
+                await asyncio.sleep(0.01)
+
+            assert server._matchmaker.waiting_count == 0
+        finally:
+            await websocket.close()
             await server.close()
 
     asyncio.run(scenario())

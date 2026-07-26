@@ -18,6 +18,11 @@ from server.game.admission import GameAdmission
 from server.game.controller import GameController
 from server.game.game_registry import GameRegistry
 from server.game.tick_loop import run_tick_loop
+from server.services.matchmaker import (
+    Matchmaker,
+    MatchmakingPlayer,
+    MatchmakingTimeoutError,
+)
 from server.services.session_registry import SessionRegistry
 from server.services.auth import AuthError
 from server.transport.connection_io import run_connection_io
@@ -34,6 +39,8 @@ class GameServer:
         session_registry=None,
         auth_service=None,
         completion_service=None,
+        match_rating_range: int = config.MATCHMAKING_RATING_RANGE,
+        match_timeout_seconds: float = config.MATCHMAKING_TIMEOUT_SECONDS,
     ):
         if auth_service is None:
             raise TypeError("AUTH_SERVICE_REQUIRED")
@@ -49,6 +56,11 @@ class GameServer:
         self._admission = GameAdmission(
             self._registry,
             completion_service=completion_service,
+        )
+        self._matchmaker = Matchmaker(
+            self._admission.admit_pair,
+            rating_range=match_rating_range,
+            timeout_seconds=match_timeout_seconds,
         )
         self._controller = GameController(self._registry)
 
@@ -153,16 +165,26 @@ class GameServer:
                 await connection.close(code=1008, reason="invalid_join")
                 return
 
-            result = await self._admission.admit(
-                join_request,
-                websocket=connection,
-                user_id=user.id,
-                username=user.username,
-                session_token=session.token,
-            )
-            if not result.is_accepted:
-                await connection.send(result.rejection)
+            rejection = self._admission.rejection_for(join_request)
+            if rejection is not None:
+                await connection.send(rejection)
                 await connection.close(code=1008, reason="join_rejected")
+                return
+
+            player = MatchmakingPlayer(
+                session=session,
+                request=join_request,
+                websocket=connection,
+            )
+            try:
+                result = await self._wait_for_match(connection, player)
+            except MatchmakingTimeoutError:
+                await connection.send(
+                    encode_error(join_request.request_id, "match_timeout")
+                )
+                await connection.close(code=1008, reason="match_timeout")
+                return
+            if result is None:
                 return
 
             context = result.context
@@ -174,3 +196,30 @@ class GameServer:
                 self._admission.release(context)
             if session is not None:
                 self._sessions.release(session.token)
+
+    async def _wait_for_match(
+        self,
+        connection: ServerConnection,
+        player: MatchmakingPlayer,
+    ):
+        """Wait for pairing while removing a client that disconnects in queue."""
+        match_task = asyncio.create_task(
+            self._matchmaker.find_or_wait(player),
+            name=f"matchmaking-{player.session.user_id}",
+        )
+        closed_task = asyncio.create_task(
+            connection.wait_closed(),
+            name=f"queue-connection-{player.session.user_id}",
+        )
+        done, _ = await asyncio.wait(
+            {match_task, closed_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if match_task in done:
+            closed_task.cancel()
+            await asyncio.gather(closed_task, return_exceptions=True)
+            return match_task.result()
+
+        match_task.cancel()
+        await asyncio.gather(match_task, return_exceptions=True)
+        return None

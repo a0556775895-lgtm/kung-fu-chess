@@ -10,6 +10,8 @@ from server.dal.repository import UserRepository
 from server.game.game_result import FinishReason, GameResult
 from server.main import create_server
 from server.services.game_completion import GameCompletionService
+from server.services.matchmaker import MatchmakingPlayer
+from server.services.session_registry import ActiveSession
 
 
 def test_create_server_initializes_persistent_database(sqlite_path):
@@ -70,16 +72,17 @@ def test_production_composition_persists_match_completion(sqlite_path):
 
 
 async def _admit_players_and_finish(server, white, black):
-    white_admission = await server._admission.admit(
+    white_player = MatchmakingPlayer(
+        ActiveSession("white-token", white.id, white.username, white.rating),
         JoinRequest("join-white", STANDARD_GAME_CONFIG),
-        user_id=white.id,
-        username=white.username,
     )
-    black_admission = await server._admission.admit(
+    black_player = MatchmakingPlayer(
+        ActiveSession("black-token", black.id, black.username, black.rating),
         JoinRequest("join-black", STANDARD_GAME_CONFIG),
-        user_id=black.id,
-        username=black.username,
     )
+    admissions = server._admission.admit_pair(white_player, black_player)
+    white_admission = admissions["white-token"]
+    black_admission = admissions["black-token"]
     match = white_admission.match
     result = GameResult(
         winner_color=PieceColor.WHITE,

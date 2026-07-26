@@ -6,6 +6,7 @@ from pathlib import Path
 HOST = "127.0.0.1"
 PORT = 8765
 DATABASE_PATH = Path("data") / "kung_fu_chess.db"
-DEFAULT_GAME_ID = "default"
 TICK_INTERVAL_MS = 50
 MAX_TICK_STEP_MS = 50
+MATCHMAKING_RATING_RANGE = 100
+MATCHMAKING_TIMEOUT_SECONDS = 60.0

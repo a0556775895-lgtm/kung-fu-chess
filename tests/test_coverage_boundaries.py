@@ -662,6 +662,52 @@ def test_network_client_rejects_mismatched_auth_request_id(
         asyncio.run(client._run_connection())
 
 
+@pytest.mark.parametrize(
+    "join_response,error_type,reason",
+    [
+        (
+            encode_error("another-request", "match_timeout"),
+            ConnectionError,
+            "join_request_id_mismatch",
+        ),
+        (
+            encode_error("join-fixed", "match_timeout"),
+            network_client_module.MatchmakingTimeoutError,
+            "match_timeout",
+        ),
+        (
+            encode_error("join-fixed", "unsupported_game_config"),
+            ConnectionError,
+            "unsupported_game_config",
+        ),
+    ],
+)
+def test_network_client_handles_join_rejections(
+    monkeypatch,
+    join_response,
+    error_type,
+    reason,
+):
+    auth = encode_auth_ok(
+        AuthResponse("login-fixed", 1, "Alice", 1200, "session-token")
+    )
+    websocket = _FakeClientWebSocket([auth, join_response])
+    monkeypatch.setattr(
+        network_client_module,
+        "connect",
+        lambda *_args, **_kwargs: websocket,
+    )
+    monkeypatch.setattr(
+        network_client_module.uuid,
+        "uuid4",
+        lambda: SimpleNamespace(hex="fixed"),
+    )
+    client = NetworkClient("ws://localhost:1", "Alice", "secret")
+
+    with pytest.raises(error_type, match=reason):
+        asyncio.run(client._run_connection())
+
+
 def test_network_client_propagates_reader_task_failure(monkeypatch):
     auth = encode_auth_ok(
         AuthResponse("login-fixed", 1, "Alice", 1200, "session-token")

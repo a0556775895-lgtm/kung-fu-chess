@@ -1,6 +1,5 @@
-"""Atomic player admission and authoritative Match configuration selection."""
-"""מחליט אם משתמש יכול להתחבר למשחק, אחראית על חיבור משתמש למשחק"""
-import asyncio
+"""Create one isolated Match and two player contexts from an approved pair."""
+"""מקבל זוג למשחק ומכין לו את הכל"""
 from dataclasses import dataclass
 import uuid
 
@@ -13,8 +12,8 @@ from networking.protocol import (
     encode_config_overridden,
     encode_error,
 )
-from server import config as server_config
 from server.game.match import Match
+from server.services.matchmaker import MatchmakingPlayer
 from server.transport.connection import ConnectionContext, ConnectionRole
 
 
@@ -28,70 +27,86 @@ class AdmissionResult:
 
     @property
     def is_accepted(self) -> bool:
-        """Whether the connection received a player slot."""
+        """Whether matchmaking produced a live player context."""
         return self.context is not None
 
 
 class GameAdmission:
-    """Admit at most two players to the default Match without color races."""
+    """Turn one compatible matchmaking pair into an isolated live Match."""
 
     def __init__(
         self,
         registry,
-        game_id: str = server_config.DEFAULT_GAME_ID,
         connection_id_factory=None,
+        game_id_factory=None,
         completion_service=None,
     ):
         self._registry = registry
-        self._game_id = game_id
-        self._connection_id_factory = connection_id_factory or (lambda: uuid.uuid4().hex)
+        self._connection_id_factory = (
+            connection_id_factory or (lambda: uuid.uuid4().hex)
+        )
+        self._game_id_factory = game_id_factory or (lambda: uuid.uuid4().hex)
         self._completion_service = completion_service
-        self._lock = asyncio.Lock()
 
-    async def admit(
-        self,
-        request: JoinRequest,
-        websocket=None,
-        user_id: int | None = None,
-        username: str | None = None,
-        session_token: str | None = None,
-    ) -> AdmissionResult:
-        """Atomically create/find the Match, assign a free color, and queue initial messages."""
-        async with self._lock:
-            match = self._get_or_create_match(request)
-            if match is None:
-                return AdmissionResult(
-                    context=None,
-                    match=None,
-                    rejection=encode_error(request.request_id, "unsupported_game_config"),
-                )
-
-            color = self._first_available_color(match)
-            if color is None:
-                return AdmissionResult(
-                    context=None,
-                    match=match,
-                    rejection=encode_error(request.request_id, "server_full"),
-                )
-
-            context = ConnectionContext(
-                connection_id=self._connection_id_factory(),
-                game_id=match.game_id,
-                role=ConnectionRole.PLAYER,
-                color=color,
-                user_id=user_id,
-                username=username,
-                session_token=session_token,
-                websocket=websocket,
+    @staticmethod
+    def rejection_for(request: JoinRequest) -> str | None:
+        """Return a wire rejection before unsupported config enters the queue."""
+        if not is_supported_game_config(request.requested_config):
+            return encode_error(
+                request.request_id,
+                "unsupported_game_config",
             )
-            match.add_connection(context)
+        return None
 
-            if request.requested_config == match.game_config:
-                context.enqueue(encode_config_accepted(request.request_id, match.game_config))
-            else:
-                context.enqueue(encode_config_overridden(request.request_id, match.game_config))
-            match.broadcast_state()
-            return AdmissionResult(context=context, match=match)
+    def admit_pair(
+        self,
+        first: MatchmakingPlayer,
+        second: MatchmakingPlayer,
+    ) -> dict[str, AdmissionResult]:
+        """Create exactly one Match and return each session's personalized result."""
+        if first.session.token == second.session.token:
+            raise ValueError("PLAYERS_MUST_BE_DIFFERENT")
+        if (
+            self.rejection_for(first.request) is not None
+            or self.rejection_for(second.request) is not None
+        ):
+            raise ValueError("UNSUPPORTED_GAME_CONFIG")
+
+        game_id = self._game_id_factory()
+        if not isinstance(game_id, str) or not game_id:
+            raise ValueError("INVALID_GAME_ID")
+        match = Match(
+            game_id,
+            GameEngine(create_board(first.request.requested_config)),
+            game_config=first.request.requested_config,
+            completion_service=self._completion_service,
+        )
+        self._registry.add(match)
+
+        first_context = self._create_context(
+            first,
+            match,
+            PieceColor.WHITE,
+        )
+        second_context = self._create_context(
+            second,
+            match,
+            PieceColor.BLACK,
+        )
+        match.add_connection(first_context)
+        match.add_connection(second_context)
+        first.session.game_id = game_id
+        first.session.color = PieceColor.WHITE
+        second.session.game_id = game_id
+        second.session.color = PieceColor.BLACK
+
+        self._enqueue_config(first_context, first.request, match)
+        self._enqueue_config(second_context, second.request, match)
+        match.broadcast_state()
+        return {
+            first.session.token: AdmissionResult(first_context, match),
+            second.session.token: AdmissionResult(second_context, match),
+        }
 
     def release(self, context: ConnectionContext) -> None:
         """Remove a disconnected context if its Match still exists."""
@@ -102,29 +117,32 @@ class GameAdmission:
         if match.has_connection(context):
             match.remove_connection(context.connection_id)
 
-    def _get_or_create_match(self, request: JoinRequest) -> Match | None:
-        try:
-            return self._registry.get(self._game_id)
-        except KeyError:
-            if not is_supported_game_config(request.requested_config):
-                return None
-            match = Match(
-                self._game_id,
-                GameEngine(create_board(request.requested_config)),
-                game_config=request.requested_config,
-                completion_service=self._completion_service,
-            )
-            self._registry.add(match)
-            return match
+    def _create_context(
+        self,
+        player: MatchmakingPlayer,
+        match: Match,
+        color: PieceColor,
+    ) -> ConnectionContext:
+        return ConnectionContext(
+            connection_id=self._connection_id_factory(),
+            game_id=match.game_id,
+            role=ConnectionRole.PLAYER,
+            color=color,
+            user_id=player.session.user_id,
+            username=player.session.username,
+            session_token=player.session.token,
+            websocket=player.websocket,
+        )
 
     @staticmethod
-    def _first_available_color(match: Match) -> PieceColor | None:
-        occupied = {
-            context.color
-            for context in match.connections()
-            if context.role is ConnectionRole.PLAYER
-        }
-        for color in (PieceColor.WHITE, PieceColor.BLACK):
-            if color not in occupied:
-                return color
-        return None
+    def _enqueue_config(
+        context: ConnectionContext,
+        request: JoinRequest,
+        match: Match,
+    ) -> None:
+        encoder = (
+            encode_config_accepted
+            if request.requested_config == match.game_config
+            else encode_config_overridden
+        )
+        context.enqueue(encoder(request.request_id, match.game_config))

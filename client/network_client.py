@@ -36,6 +36,10 @@ class AuthenticationRejectedError(ConnectionError):
         self.reason = reason
 
 
+class MatchmakingTimeoutError(TimeoutError):
+    """No compatible opponent was found before the server queue deadline."""
+
+
 class NetworkClient:
     """Own one WebSocket connection on a background asyncio thread."""
 
@@ -48,6 +52,7 @@ class NetworkClient:
         *,
         register: bool = False,
         connect_timeout: float = 5.0,
+        match_timeout: float = 65.0,
         queue_size: int = 256,
     ):
         """Store connection settings without opening the socket yet."""
@@ -60,6 +65,8 @@ class NetworkClient:
             raise TypeError("REGISTER_FLAG_NOT_BOOLEAN")
         if connect_timeout <= 0:
             raise ValueError("INVALID_CONNECT_TIMEOUT")
+        if match_timeout <= 0:
+            raise ValueError("INVALID_MATCH_TIMEOUT")
         if queue_size <= 0:
             raise ValueError("INVALID_QUEUE_SIZE")
 
@@ -69,6 +76,7 @@ class NetworkClient:
         self._register = register
         self._requested_config = requested_config
         self._connect_timeout = connect_timeout
+        self._match_timeout = match_timeout
         self._outgoing = Queue(maxsize=queue_size)
         self._incoming = Queue(maxsize=queue_size)
         self._ready = Event()
@@ -125,7 +133,11 @@ class NetworkClient:
     def start(self, timeout: float | None = None) -> None:
         """Start the network thread and block only until JOIN finishes or fails."""
         """מתחילה את ההתחברות וחוסמתמ כל פעולה עד שמתבצע חיבור למשחק"""
-        wait_timeout = self._connect_timeout + 1.0 if timeout is None else timeout
+        wait_timeout = (
+            self._connect_timeout + self._match_timeout + 1.0
+            if timeout is None
+            else timeout
+        )
         if wait_timeout <= 0:
             raise ValueError("INVALID_START_TIMEOUT")
 
@@ -147,6 +159,8 @@ class NetworkClient:
             thread.join()
             if isinstance(self.failure, AuthenticationRejectedError):
                 raise AuthenticationRejectedError(self.failure.reason) from self.failure
+            if isinstance(self.failure, MatchmakingTimeoutError):
+                raise MatchmakingTimeoutError("match_timeout") from self.failure
             raise ConnectionError("client_connection_failed") from self.failure
 
     def send(self, message: str) -> None:
@@ -232,8 +246,15 @@ class NetworkClient:
             await websocket.send(encode_join(join))
 
             config_message = await asyncio.wait_for(
-                websocket.recv(), timeout=self._connect_timeout
+                websocket.recv(), timeout=self._match_timeout
             )
+            if config_message.startswith("ERR "):
+                response = parse_command_response(config_message)
+                if response.request_id != join.request_id:
+                    raise ConnectionError("join_request_id_mismatch")
+                if response.reason == "match_timeout":
+                    raise MatchmakingTimeoutError("match_timeout")
+                raise ConnectionError(response.reason or "join_rejected")
             state_message = await asyncio.wait_for(
                 websocket.recv(), timeout=self._connect_timeout
             )

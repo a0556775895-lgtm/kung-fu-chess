@@ -6,7 +6,11 @@ import pytest
 
 from boardio.board_factory import STANDARD_GAME_CONFIG
 from networking.protocol import decode_event, parse_command_response
-from client.network_client import AuthenticationRejectedError, NetworkClient
+from client.network_client import (
+    AuthenticationRejectedError,
+    MatchmakingTimeoutError,
+    NetworkClient,
+)
 from server.game.game_registry import GameRegistry
 from server.transport.game_server import GameServer
 
@@ -25,6 +29,40 @@ async def _start_client(server, username="Alice", *, register=True, password=PAS
     return client
 
 
+async def _start_pair(server, *, register=True):
+    """Start two clients concurrently because each waits for matchmaking."""
+    first = NetworkClient(
+        f"ws://127.0.0.1:{server.bound_port}",
+        "Alice",
+        PASSWORD,
+        register=register,
+        match_timeout=2.0,
+    )
+    second = NetworkClient(
+        f"ws://127.0.0.1:{server.bound_port}",
+        "Bob",
+        PASSWORD,
+        register=register,
+        match_timeout=2.0,
+    )
+    await asyncio.gather(
+        asyncio.to_thread(first.start),
+        asyncio.to_thread(second.start),
+    )
+    return first, second
+
+
+async def _close_clients(*clients):
+    """Close every started client without repeating thread cleanup in tests."""
+    await asyncio.gather(
+        *(
+            asyncio.to_thread(client.close)
+            for client in clients
+            if client is not None
+        )
+    )
+
+
 async def _wait_for_messages(client, predicate, timeout=2.0):
     messages = []
     deadline = asyncio.get_running_loop().time() + timeout
@@ -40,9 +78,9 @@ def test_network_client_completes_join_before_start_returns(auth_service):
     async def scenario():
         server = GameServer(port=0, auth_service=auth_service)
         await server.start()
-        client = None
+        client = opponent = None
         try:
-            client = await _start_client(server)
+            client, opponent = await _start_pair(server)
 
             assert client.is_connected
             assert client.auth_response.username == "Alice"
@@ -50,11 +88,13 @@ def test_network_client_completes_join_before_start_returns(auth_service):
             assert client.session_token == client.auth_response.session_token
             assert client.config_response.effective_config == STANDARD_GAME_CONFIG
             assert not client.config_response.was_overridden
-            assert client.initial_state.assigned_color == "w"
-            assert client.initial_state.game_id == "default"
+            assert {
+                client.initial_state.assigned_color,
+                opponent.initial_state.assigned_color,
+            } == {"w", "b"}
+            assert client.initial_state.game_id == opponent.initial_state.game_id
         finally:
-            if client is not None:
-                await asyncio.to_thread(client.close)
+            await _close_clients(client, opponent)
             await server.close()
 
     asyncio.run(scenario())
@@ -64,9 +104,9 @@ def test_network_client_reports_duplicate_active_account(auth_service):
     async def scenario():
         server = GameServer(port=0, auth_service=auth_service)
         await server.start()
-        first = None
+        first = opponent = None
         try:
-            first = await _start_client(server, "Alice")
+            first, opponent = await _start_pair(server)
             duplicate = NetworkClient(
                 f"ws://127.0.0.1:{server.bound_port}",
                 "alice",
@@ -82,8 +122,7 @@ def test_network_client_reports_duplicate_active_account(auth_service):
             assert first.is_connected
             assert not duplicate.is_connected
         finally:
-            if first is not None:
-                await asyncio.to_thread(first.close)
+            await _close_clients(first, opponent)
             await server.close()
 
     asyncio.run(scenario())
@@ -93,10 +132,15 @@ def test_network_client_sends_command_and_receives_server_messages(auth_service)
     async def scenario():
         server = GameServer(port=0, auth_service=auth_service)
         await server.start()
-        client = None
+        client = opponent = None
         try:
-            client = await _start_client(server)
-            client.send("MOVE client-move WPe2e3")
+            client, opponent = await _start_pair(server)
+            white_client = next(
+                candidate
+                for candidate in (client, opponent)
+                if candidate.initial_state.assigned_color == "w"
+            )
+            white_client.send("MOVE client-move WPe2e3")
 
             def received_response_and_motion(messages):
                 has_response = any(
@@ -111,7 +155,10 @@ def test_network_client_sends_command_and_receives_server_messages(auth_service)
                 )
                 return has_response and has_motion
 
-            messages = await _wait_for_messages(client, received_response_and_motion)
+            messages = await _wait_for_messages(
+                white_client,
+                received_response_and_motion,
+            )
             response_message = next(
                 message
                 for message in messages
@@ -121,8 +168,7 @@ def test_network_client_sends_command_and_receives_server_messages(auth_service)
 
             assert parse_command_response(response_message).accepted
         finally:
-            if client is not None:
-                await asyncio.to_thread(client.close)
+            await _close_clients(client, opponent)
             await server.close()
 
     asyncio.run(scenario())
@@ -137,16 +183,17 @@ def test_network_client_close_releases_server_connection(auth_service):
             auth_service=auth_service,
         )
         await server.start()
-        client = None
+        client = opponent = None
         try:
-            client = await _start_client(server)
-            assert len(registry.get("default").connections()) == 1
+            client, opponent = await _start_pair(server)
+            game_id = client.initial_state.game_id
+            assert len(registry.get(game_id).connections()) == 2
 
             await asyncio.to_thread(client.close)
             assert not client.is_connected
 
             deadline = asyncio.get_running_loop().time() + 1.0
-            while registry.get("default").connections():
+            while len(registry.get(game_id).connections()) != 1:
                 if asyncio.get_running_loop().time() >= deadline:
                     raise TimeoutError("server did not release the client")
                 await asyncio.sleep(0.01)
@@ -154,8 +201,7 @@ def test_network_client_close_releases_server_connection(auth_service):
             with pytest.raises(RuntimeError, match="client_not_connected"):
                 client.send("MOVE after-close WPe2e3")
         finally:
-            if client is not None and client.is_connected:
-                await asyncio.to_thread(client.close)
+            await _close_clients(client, opponent)
             await server.close()
 
     asyncio.run(scenario())
@@ -165,21 +211,18 @@ def test_network_client_logs_in_to_persisted_account_after_disconnect(auth_servi
     async def scenario():
         server = GameServer(port=0, auth_service=auth_service)
         await server.start()
-        registered = logged_in = None
+        registered = registered_opponent = logged_in = login_opponent = None
         try:
-            registered = await _start_client(server)
+            registered, registered_opponent = await _start_pair(server)
             registered_user_id = registered.auth_response.user_id
-            await asyncio.to_thread(registered.close)
+            await _close_clients(registered, registered_opponent)
 
-            logged_in = await _start_client(server, register=False)
+            logged_in, login_opponent = await _start_pair(server, register=False)
 
             assert logged_in.auth_response.user_id == registered_user_id
             assert logged_in.auth_response.username == "Alice"
         finally:
-            if registered is not None and registered.is_connected:
-                await asyncio.to_thread(registered.close)
-            if logged_in is not None:
-                await asyncio.to_thread(logged_in.close)
+            await _close_clients(logged_in, login_opponent)
             await server.close()
 
     asyncio.run(scenario())
@@ -189,10 +232,10 @@ def test_network_client_rejects_wrong_password(auth_service):
     async def scenario():
         server = GameServer(port=0, auth_service=auth_service)
         await server.start()
-        registered = None
+        registered = opponent = None
         try:
-            registered = await _start_client(server)
-            await asyncio.to_thread(registered.close)
+            registered, opponent = await _start_pair(server)
+            await _close_clients(registered, opponent)
 
             with pytest.raises(
                 AuthenticationRejectedError,
@@ -204,8 +247,37 @@ def test_network_client_rejects_wrong_password(auth_service):
                     password="definitely the wrong password",
                 )
         finally:
-            if registered is not None and registered.is_connected:
-                await asyncio.to_thread(registered.close)
+            await _close_clients(
+                registered if registered is not None and registered.is_connected else None,
+                opponent if opponent is not None and opponent.is_connected else None,
+            )
             await server.close()
 
     asyncio.run(scenario())
+
+
+def test_network_client_reports_matchmaking_timeout(auth_service):
+    async def scenario():
+        server = GameServer(
+            port=0,
+            auth_service=auth_service,
+            match_timeout_seconds=0.01,
+        )
+        await server.start()
+        try:
+            with pytest.raises(MatchmakingTimeoutError, match="match_timeout"):
+                await _start_client(server)
+        finally:
+            await server.close()
+
+    asyncio.run(scenario())
+
+
+def test_network_client_rejects_invalid_match_timeout():
+    with pytest.raises(ValueError, match="INVALID_MATCH_TIMEOUT"):
+        NetworkClient(
+            "ws://localhost:1",
+            "Alice",
+            PASSWORD,
+            match_timeout=0,
+        )

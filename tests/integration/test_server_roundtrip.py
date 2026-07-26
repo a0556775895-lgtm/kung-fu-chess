@@ -25,8 +25,8 @@ from server.transport.game_server import GameServer
 PASSWORD = "correct horse battery"
 
 
-async def _join(websocket, request_id):
-    """Complete the mandatory handshake and return the initial snapshot."""
+async def _send_join(websocket, request_id):
+    """Authenticate and place one real socket in the matchmaking queue."""
     username = request_id.replace("join", "user")
     await websocket.send(
         encode_register(
@@ -35,6 +35,10 @@ async def _join(websocket, request_id):
     )
     parse_auth_response(await websocket.recv())
     await websocket.send(encode_join(JoinRequest(request_id, STANDARD_GAME_CONFIG)))
+
+
+async def _receive_admission(websocket):
+    """Receive admission only after both real clients have entered the queue."""
     config_response = parse_config_response(await websocket.recv())
     initial_state = decode_state(await websocket.recv())
     return config_response, initial_state
@@ -72,20 +76,6 @@ async def _observe_completed_move(websocket, request_id=None):
     return response, final_state
 
 
-async def _wait_for_player_names(websocket, expected_names):
-    """Ignore periodic snapshots until both admitted player names are visible."""
-    deadline = asyncio.get_running_loop().time() + 3.0
-    while True:
-        remaining = deadline - asyncio.get_running_loop().time()
-        if remaining <= 0:
-            raise TimeoutError("player names were not synchronized")
-        message = await asyncio.wait_for(websocket.recv(), timeout=remaining)
-        if message.startswith("STATE "):
-            state = decode_state(message)
-            if state.player_names == expected_names:
-                return state
-
-
 def _board_signature(state):
     """Compare shared game data while ignoring connection-specific metadata."""
     return tuple(
@@ -100,20 +90,23 @@ def test_two_clients_share_one_authoritative_websocket_game(auth_service):
         try:
             uri = f"ws://127.0.0.1:{server.bound_port}"
             async with connect(uri) as white, connect(uri) as black:
-                white_config, white_initial = await _join(white, "join-white")
-                black_config, black_initial = await _join(black, "join-black")
-                expected_names = {"w": "user-white", "b": "user-black"}
-                white_after_black_joined = await _wait_for_player_names(
-                    white,
-                    expected_names,
+                await _send_join(white, "join-white")
+                await _send_join(black, "join-black")
+                (
+                    (white_config, white_initial),
+                    (black_config, black_initial),
+                ) = await asyncio.gather(
+                    _receive_admission(white),
+                    _receive_admission(black),
                 )
+                expected_names = {"w": "user-white", "b": "user-black"}
 
                 assert not white_config.was_overridden
                 assert not black_config.was_overridden
                 assert white_initial.assigned_color == "w"
                 assert black_initial.assigned_color == "b"
-                assert white_after_black_joined.player_names == expected_names
-                assert black_initial.player_names == white_after_black_joined.player_names
+                assert white_initial.player_names == expected_names
+                assert black_initial.player_names == expected_names
                 assert _board_signature(white_initial) == _board_signature(black_initial)
 
                 await white.send("MOVE move-white WPe2e3")
@@ -123,7 +116,8 @@ def test_two_clients_share_one_authoritative_websocket_game(auth_service):
                 )
 
                 assert white_response.accepted
-                assert white_final.game_id == black_final.game_id == "default"
+                assert white_final.game_id == black_final.game_id
+                assert white_final.game_id
                 assert _board_signature(white_final) == _board_signature(black_final)
         finally:
             await server.close()

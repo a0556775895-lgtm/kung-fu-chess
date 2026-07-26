@@ -269,7 +269,7 @@ NetworkClient מקבל                                                    Networ
 | תת-שלב | סטטוס | תוצאה מתוכננת |
 |---|---|---|
 | E1 — Session token ו-SessionRegistry | הושלם ואושר | `SessionRegistry` מחליף את רישום השמות הפעילים, מחזיק `ActiveSession` לפי token ושם מנורמל ומונע חיבור כפול. `AUTH_OK` מחזיר token אקראי והלקוחה שומרת אותו; עדיין אין reconnect. כל 390 בדיקות הפרויקט עוברות בכיסוי לוגיקה נמדדת של 100% |
-| E2 — Matchmaker דרך JOIN הקיים | ממתין | `JOIN` מכניס לתור; התאמה בטווח דירוג ±100 יוצרת `Match` עם `game_id` ייחודי ב-`GameRegistry`; המתנה של 60 שניות מסתיימת ב-timeout |
+| E2 — Matchmaker דרך JOIN הקיים | מומש וממתין לאישור | `JOIN` מכניס לתור המחולק ל־rating buckets; טווח הדירוג וזמן ההמתנה נקבעים ב־`server/config.py` ומוזרקים ל־`Matchmaker`. החיפוש בוחר את הדירוג הקרוב ביותר ואז את הממתינה הוותיקה ביותר. כל זוג יוצר `Match` מבודד עם `game_id` ייחודי ב־`GameRegistry`; הראשונה קובעת את הקונפיג, ניתוק מסיר מהתור, ופקיעת זמן ההמתנה מסתיימת ב־`ERR match_timeout`. ארבע שחקניות יכולות כעת לשחק בשני משחקים מקבילים במקום לקבל `server_full`. כל 405 בדיקות הפרויקט עוברות בכיסוי לוגיקה נמדדת של 100% |
 | E3 — ניתוק, countdown ו-RECONNECT בשרת | ממתין | ניתוק מסיר רק את החיבור החי ושומר session, צבע ומקום במשחק ל-20 שניות; reconnect מחבר WebSocket חדש ושולח snapshot מלא; פקיעת הזמן עוברת דרך `Match.finish(...DISCONNECT...)` |
 | E4 — Reconnect בלקוחה ובדיקות E2E | ממתין | `NetworkClient` משתמשת ב-token, חוסמת פקודות בזמן reconnect ומציגה countdown; נבדקים timeout, reconnect, הפסד בניתוק, ELO ושני משחקים מבודדים |
 
@@ -357,7 +357,7 @@ NetworkClient מקבל                                                    Networ
 | B — Network | הושלם ואושר — B1–B5 | שני לקוחות גרפיים מסונכרנים מול שרת סמכותי; serializer עובר round-trip; הרשאות צבע, קיבולת ו-request_id תקינים; אין דליפת אירועים בין משחקים; כל 214 הבדיקות ירוקות |
 | C — Username Login | הושלם ואושר — C1–C3 | login בשם משתמש, הקצאת White/Black, הצגת שמות בלוח והודעת `server_full` מאומתים מקצה לקצה |
 | D — Auth + SQLite + ELO | הושלם ואושר — D1–D6 | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
-| E — Matchmaking + Disconnect | ממתין | התאמה בטווח ±100 ו-timeout; reconnect בחלון 20 שניות; countdown ו-auto-resign נבדקו |
+| E — Matchmaking + Disconnect | בביצוע — E1 אושר, E2 ממתין לאישור | Session tokens ושידוך בטווח ±100 עם timeout מומשו; reconnect בחלון 20 שניות, countdown ו-auto-resign עדיין ממתינים |
 | F — Rooms + Spectators + Logs | ממתין | Create/Join/Cancel; שני שחקנים וצופים עם הרשאות נכונות; שני חדרים מבודדים; לוגי שרת/לקוח/משחק נוצרים ונסגרים כראוי |
 
 ## 13. קריטריוני Release סופיים
