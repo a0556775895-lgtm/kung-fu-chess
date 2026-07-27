@@ -21,7 +21,7 @@ from engine.snapshot import GameSnapshot, PieceSnapshot
 from model.game_state import GameState
 from model.piece import PieceColor
 from model.position import Position
-from networking.auth_protocol import (
+from networking.protocols.auth import (
     AuthProtocolError,
     AuthResponse,
     LoginRequest,
@@ -30,11 +30,11 @@ from networking.auth_protocol import (
     parse_auth_response,
     validate_username,
 )
-from networking.game_config_serializer import (
+from networking.serializers.game_config import (
     GameConfigSerializationError,
     GameConfigSerializer,
 )
-from networking.protocol import (
+from networking.protocols.game import (
     ConfigResponse,
     JumpCommand,
     MoveCommand,
@@ -54,7 +54,7 @@ from networking.protocol import (
     parse_join,
     position_to_algebraic,
 )
-from networking.snapshot_serializer import (
+from networking.serializers.snapshot import (
     GameSnapshotSerializer,
     SnapshotSerializationError,
 )

@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from boardio.board_factory import STANDARD_GAME_CONFIG
-from networking.protocol import JoinRequest
+from networking.protocols.game import JoinRequest
 from server.services.matchmaker import (
     AlreadyQueuedError,
     Matchmaker,

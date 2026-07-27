@@ -5,14 +5,14 @@ import asyncio
 from websockets.exceptions import ConnectionClosed
 from websockets.asyncio.server import Server, ServerConnection, serve
 
-from networking.auth_protocol import (
+from networking.protocols.auth import (
     AuthProtocolError,
     AuthResponse,
     RegisterRequest,
     encode_auth_ok,
     parse_auth_request,
 )
-from networking.protocol import ProtocolError, encode_error, parse_join
+from networking.protocols.game import ProtocolError, encode_error, parse_join
 from server import config
 from server.game.admission import GameAdmission
 from server.game.controller import GameController

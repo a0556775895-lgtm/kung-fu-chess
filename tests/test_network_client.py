@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from boardio.board_factory import STANDARD_GAME_CONFIG
-from networking.protocol import decode_event, parse_command_response
+from networking.protocols.game import decode_event, parse_command_response
 from client.network_client import (
     AuthenticationRejectedError,
     MatchmakingTimeoutError,

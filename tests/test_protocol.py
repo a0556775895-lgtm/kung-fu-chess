@@ -5,7 +5,7 @@ import pytest
 from engine.snapshot import GameSnapshot, PieceSnapshot
 from model.game_config import GameConfig
 from model.position import Position
-from networking.protocol import (
+from networking.protocols.game import (
     JumpCommand,
     JoinRequest,
     MoveCommand,

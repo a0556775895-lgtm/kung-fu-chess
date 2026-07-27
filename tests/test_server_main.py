@@ -4,7 +4,7 @@ import asyncio
 
 from boardio.board_factory import STANDARD_GAME_CONFIG
 from model.piece import PieceColor
-from networking.protocol import JoinRequest
+from networking.protocols.game import JoinRequest
 from server.dal.database import connect_database
 from server.dal.repository import UserRepository
 from server.game.game_result import FinishReason, GameResult

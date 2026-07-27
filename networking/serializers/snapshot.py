@@ -1,4 +1,4 @@
-"""Versioned JSON serialization for GameSnapshot."""
+"""Versioned JSON serialization for GameSnapshot payloads."""
 
 import json
 from typing import Any

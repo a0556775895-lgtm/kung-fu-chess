@@ -3,7 +3,7 @@
 import pytest
 
 from model.game_config import GameConfig
-from networking.game_config_serializer import (
+from networking.serializers.game_config import (
     GameConfigSerializationError,
     GameConfigSerializer,
 )

@@ -3,7 +3,7 @@
 from boardio.board_factory import STANDARD_GAME_CONFIG
 from model.game_config import GameConfig
 from model.piece import PieceColor
-from networking.protocol import (
+from networking.protocols.game import (
     JoinRequest,
     decode_state,
     parse_command_response,

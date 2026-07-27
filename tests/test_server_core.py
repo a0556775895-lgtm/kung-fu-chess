@@ -8,7 +8,11 @@ from boardio.board_parser import BoardParser
 from engine.game_engine import GameEngine
 from model.piece import PieceColor
 from model.position import Position
-from networking.protocol import decode_event, decode_state, parse_command_response
+from networking.protocols.game import (
+    decode_event,
+    decode_state,
+    parse_command_response,
+)
 from server.game.controller import GameController
 from server.game.game_result import FinishReason, GameResult
 from server.game.game_registry import GameRegistry

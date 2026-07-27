@@ -4,7 +4,7 @@ from bus.event_bus import EventBus
 from engine.events import Arrival, GameOver, GameStarted, JumpStarted, MotionStarted
 from model.piece import Piece, PieceColor, PieceState
 from model.position import Position
-from networking.protocol import ProtocolError
+from networking.protocols.game import ProtocolError
 from realtime.real_time_arbiter import ArrivalEvent
 
 

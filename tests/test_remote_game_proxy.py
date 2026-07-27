@@ -8,7 +8,7 @@ from client.remote_game_engine_proxy import RemoteGameEngineProxy
 from client.snapshot_board_view import SnapshotBoardView
 from engine.snapshot import GameSnapshot, PieceSnapshot
 from model.position import Position
-from networking.protocol import (
+from networking.protocols.game import (
     ProtocolError,
     encode_event,
     encode_state,

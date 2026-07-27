@@ -5,7 +5,7 @@ import uuid
 
 from engine.snapshot import GameSnapshot
 from model.position import Position
-from networking.protocol import (
+from networking.protocols.game import (
     JumpCommand,
     MoveCommand,
     ProtocolError,

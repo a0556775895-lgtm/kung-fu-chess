@@ -1,7 +1,7 @@
 """Convert one Match's domain events into non-blocking outbound messages."""
 
 from engine.events import Arrival, GameStarted, JumpStarted, MotionStarted
-from networking.protocol import encode_event
+from networking.protocols.game import encode_event
 
 
 class ServerBroadcaster:

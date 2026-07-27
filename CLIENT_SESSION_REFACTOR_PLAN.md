@@ -750,8 +750,8 @@ The conservative phase should leave these behaviorally unchanged:
 - `client/snapshot_board_view.py`
 - `client/network_event_adapter.py`
 - `engine/game_engine.py`
-- `networking/protocol.py`
-- `networking/snapshot_serializer.py`
+- `networking/protocols/game.py`
+- `networking/serializers/snapshot.py`
 - All server modules
 
 ---

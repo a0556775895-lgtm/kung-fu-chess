@@ -7,7 +7,7 @@ from client.network_event_adapter import NetworkEventAdapter
 from engine.events import Arrival, GameOver, GameStarted, JumpStarted, MotionStarted
 from model.piece import PieceColor, PieceState
 from model.position import Position
-from networking.protocol import ProtocolError
+from networking.protocols.game import ProtocolError
 
 
 def _piece(piece_id="white-pawn", color="w", state="MOVING"):

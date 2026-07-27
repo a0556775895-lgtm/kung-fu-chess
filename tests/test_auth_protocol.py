@@ -2,7 +2,7 @@
 
 import pytest
 
-from networking.auth_protocol import (
+from networking.protocols.auth import (
     AuthProtocolError,
     AuthResponse,
     LoginRequest,

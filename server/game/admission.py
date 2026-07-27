@@ -6,7 +6,7 @@ import uuid
 from boardio.board_factory import create_board, is_supported_game_config
 from engine.game_engine import GameEngine
 from model.piece import PieceColor
-from networking.protocol import (
+from networking.protocols.game import (
     JoinRequest,
     encode_config_accepted,
     encode_config_overridden,

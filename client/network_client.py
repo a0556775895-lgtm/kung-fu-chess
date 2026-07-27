@@ -8,7 +8,7 @@ import uuid
 from websockets.asyncio.client import connect
 
 from boardio.board_factory import STANDARD_GAME_CONFIG
-from networking.auth_protocol import (
+from networking.protocols.auth import (
     LoginRequest,
     RegisterRequest,
     encode_login,
@@ -16,7 +16,7 @@ from networking.auth_protocol import (
     parse_auth_response,
     validate_username,
 )
-from networking.protocol import (
+from networking.protocols.game import (
     JoinRequest,
     decode_state,
     encode_join,

@@ -1,7 +1,7 @@
 """Authorize parsed commands and route them to the correct Match engine."""
 
 from model.piece import PieceColor
-from networking.protocol import (
+from networking.protocols.game import (
     JumpCommand,
     MoveCommand,
     ProtocolError,

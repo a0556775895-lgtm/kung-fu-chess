@@ -1,4 +1,4 @@
-"""Text envelopes and JSON payloads for persistent account authentication."""
+"""Text protocol messages for persistent account authentication."""
 """מגדיר כיצד הודעות אימות עוברות ברשת, ומספק פונקציות קידוד ופענוח"""
 from dataclasses import dataclass, field
 import json

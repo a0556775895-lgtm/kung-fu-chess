@@ -1,4 +1,4 @@
-"""Pure text protocol parsing and encoding for multiplayer messages."""
+"""Pure text protocol parsing and encoding for multiplayer game messages."""
 
 from dataclasses import dataclass
 import json
@@ -8,11 +8,11 @@ from typing import Any
 from engine.snapshot import GameSnapshot
 from model.game_config import GameConfig
 from model.position import Position
-from networking.game_config_serializer import (
+from networking.serializers.game_config import (
     GameConfigSerializationError,
     GameConfigSerializer,
 )
-from networking.snapshot_serializer import GameSnapshotSerializer
+from networking.serializers.snapshot import GameSnapshotSerializer
 
 
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")

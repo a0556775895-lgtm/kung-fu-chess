@@ -5,7 +5,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from itertools import count
 
-from networking.protocol import JoinRequest
+from networking.protocols.game import JoinRequest
 from server.services.session_registry import ActiveSession
 
 

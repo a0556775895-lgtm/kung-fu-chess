@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import getpass
 
-from networking.auth_protocol import AuthProtocolError, validate_username
+from networking.protocols.auth import AuthProtocolError, validate_username
 
 
 USERNAME_HELP = (

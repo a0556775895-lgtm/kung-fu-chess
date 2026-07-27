@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import secrets
 
-from networking.auth_protocol import AuthProtocolError, validate_username
+from networking.protocols.auth import AuthProtocolError, validate_username
 from server.dal.repository import DuplicateUsernameError
 
 

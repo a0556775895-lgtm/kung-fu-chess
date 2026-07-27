@@ -6,7 +6,7 @@ import pytest
 
 from engine.snapshot import GameSnapshot, MotionSnapshot, PieceSnapshot
 from model.position import Position
-from networking.snapshot_serializer import (
+from networking.serializers.snapshot import (
     GameSnapshotSerializer,
     SnapshotSerializationError,
 )
