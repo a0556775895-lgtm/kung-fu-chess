@@ -306,6 +306,55 @@ def test_match_advances_authoritative_time_and_rejects_negative_tick():
         match.advance_time(-1)
 
 
+def test_match_pause_freezes_time_and_rejects_commands_until_all_return():
+    registry, match, white = setup_match()
+    black = make_context(
+        "black",
+        "game-1",
+        color=PieceColor.BLACK,
+        user_id=2,
+    )
+    match.add_connection(black)
+    match.advance_time(100)
+
+    assert match.pause_for(PieceColor.BLACK)
+    assert not match.pause_for(PieceColor.WHITE)
+    assert match.disconnected_colors == {
+        PieceColor.WHITE,
+        PieceColor.BLACK,
+    }
+    match.advance_time(5_000)
+    assert match.server_time_ms() == 100
+
+    response = parse_command_response(
+        GameController(registry).handle_message(white, "MOVE paused WRa1a2")
+    )
+    assert response.reason == "game_paused"
+
+    assert not match.resume_for(PieceColor.BLACK)
+    assert match.is_paused
+    assert match.resume_for(PieceColor.WHITE)
+    assert not match.is_paused
+    match.advance_time(50)
+    assert match.server_time_ms() == 150
+
+
+def test_match_pause_validates_color_and_does_not_pause_finished_game():
+    _, match, _ = setup_match()
+    with pytest.raises(ValueError, match="INVALID_PLAYER_COLOR"):
+        match.pause_for("w")
+    with pytest.raises(ValueError, match="INVALID_PLAYER_COLOR"):
+        match.resume_for("w")
+
+    match.finish(GameResult(
+        winner_color=PieceColor.WHITE,
+        reason=FinishReason.RESIGN,
+        duration_ms=0,
+    ))
+    assert not match.pause_for(PieceColor.BLACK)
+    assert not match.is_paused
+
+
 def test_arrival_event_uses_authoritative_engine_time():
     registry, match, context = setup_match()
     GameController(registry).handle_message(context, "MOVE timed WRa1a2")
@@ -400,6 +449,9 @@ def test_match_persists_authenticated_players_once_on_finish():
         "result": result,
     }]
     assert white.outbound.empty()
+    final_state = decode_state(black.outbound.get_nowait())
+    assert final_state.game_over
+    assert final_state.winner_color == "b"
     assert decode_event(black.outbound.get_nowait())["type"] == "GAME_OVER"
     assert black.outbound.empty()
 

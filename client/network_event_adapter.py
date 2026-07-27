@@ -89,6 +89,11 @@ class NetworkEventAdapter:
             self._bus.publish(GameOver())
             return
 
+        if event_type in {"PLAYER_DISCONNECTED", "PLAYER_RECONNECTED"}:
+            # The graphical reconnect status is added in E4. Until then these
+            # server lifecycle events must not break the existing presentation.
+            return
+
         raise ProtocolError("UNKNOWN_EVENT_TYPE")
 
 

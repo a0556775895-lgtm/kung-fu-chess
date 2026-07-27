@@ -42,6 +42,9 @@ class GameServer:
         completion_service=None,
         match_rating_range: int = config.MATCHMAKING_RATING_RANGE,
         match_timeout_seconds: float = config.MATCHMAKING_TIMEOUT_SECONDS,
+        reconnect_grace_period_seconds: float = (
+            config.RECONNECT_GRACE_PERIOD_SECONDS
+        ),
     ):
         if auth_service is None:
             raise TypeError("AUTH_SERVICE_REQUIRED")
@@ -68,6 +71,7 @@ class GameServer:
             self._sessions,
             self._registry,
             self._admission,
+            grace_period_seconds=reconnect_grace_period_seconds,
         )
         self._controller = GameController(self._registry)
 
@@ -112,6 +116,7 @@ class GameServer:
             await asyncio.gather(tick_task, return_exceptions=True)
         server.close()
         await server.wait_closed()
+        await self._reconnect.close()
         self._sessions.clear()
 
     async def _handle_connection(self, connection: ServerConnection) -> None:
@@ -145,7 +150,7 @@ class GameServer:
 
                 context = result.context
                 await run_connection_io(context, self._controller)
-                return
+                return  # pragma: no cover - connection loop exits by ConnectionClosed
 
             try:
                 auth_request = parse_auth_request(first_message)

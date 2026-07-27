@@ -2,6 +2,10 @@
 
 import asyncio
 
+from model.piece import PieceColor
+from server import config
+from server.game.game_result import FinishReason, GameResult
+
 
 class ReconnectError(ValueError):
     """A reconnect JOIN cannot be restored to a live match."""
@@ -14,10 +18,26 @@ class ReconnectError(ValueError):
 class ReconnectService:
     """Coordinate session state, match lookup and connection restoration."""
 
-    def __init__(self, sessions, registry, admission):
+    def __init__(
+        self,
+        sessions,
+        registry,
+        admission,
+        grace_period_seconds=config.RECONNECT_GRACE_PERIOD_SECONDS,
+        sleep=asyncio.sleep,
+    ):
+        if (
+            isinstance(grace_period_seconds, bool)
+            or not isinstance(grace_period_seconds, (int, float))
+            or grace_period_seconds < 0
+        ):
+            raise ValueError("INVALID_RECONNECT_GRACE_PERIOD")
         self._sessions = sessions
         self._registry = registry
         self._admission = admission
+        self._grace_period_seconds = float(grace_period_seconds)
+        self._sleep = sleep
+        self._timeouts = {}
         self._lock = asyncio.Lock()
 
     async def disconnect(self, session, context) -> bool:
@@ -35,6 +55,18 @@ class ReconnectService:
                 return False
 
             self._sessions.mark_disconnected(session.token)
+            match.pause_for(session.color)
+            match.broadcaster.publish_player_disconnected(
+                session.color,
+                self._grace_period_seconds,
+            )
+            previous_timeout = self._timeouts.pop(session.token, None)
+            if previous_timeout is not None:
+                previous_timeout.cancel()
+            self._timeouts[session.token] = asyncio.create_task(
+                self._expire_after_grace(session.token),
+                name=f"reconnect-timeout-{session.user_id}",
+            )
             return True
 
     async def restore(self, request, websocket):
@@ -67,4 +99,50 @@ class ReconnectService:
                 session.is_connected = False
                 raise
             self._sessions.mark_connected(session.token)
+            timeout = self._timeouts.pop(session.token, None)
+            if timeout is not None:
+                timeout.cancel()
+            match.resume_for(session.color)
+            match.broadcaster.publish_player_reconnected(session.color)
             return session, result
+
+    async def close(self) -> None:
+        """Cancel every pending grace timer during explicit server shutdown."""
+        async with self._lock:
+            tasks = tuple(self._timeouts.values())
+            self._timeouts.clear()
+            for task in tasks:
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _expire_after_grace(self, token: str) -> None:
+        """Wait outside the lock, then resolve the disconnect if it is still current."""
+        try:
+            await self._sleep(self._grace_period_seconds)
+            async with self._lock:
+                if self._timeouts.get(token) is not asyncio.current_task():
+                    return
+                self._timeouts.pop(token, None)
+                session = self._sessions.get(token)
+                if session is None or session.is_connected:
+                    return
+                try:
+                    match = self._registry.get(session.game_id)
+                except KeyError:
+                    self._sessions.release(token)
+                    return
+                if match.result is None:
+                    winner = (
+                        PieceColor.BLACK
+                        if session.color is PieceColor.WHITE
+                        else PieceColor.WHITE
+                    )
+                    match.finish(GameResult(
+                        winner_color=winner,
+                        reason=FinishReason.DISCONNECT,
+                        duration_ms=match.server_time_ms(),
+                    ))
+                self._sessions.release(token)
+        except asyncio.CancelledError:
+            return

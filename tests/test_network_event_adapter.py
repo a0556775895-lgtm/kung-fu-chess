@@ -76,6 +76,13 @@ def test_adapter_publishes_game_lifecycle_events():
     assert received == ["started", "over"]
 
 
+def test_adapter_safely_ignores_reconnect_lifecycle_until_graphical_e4():
+    adapter = NetworkEventAdapter(EventBus())
+
+    adapter.publish({"type": "PLAYER_DISCONNECTED"})
+    adapter.publish({"type": "PLAYER_RECONNECTED"})
+
+
 def test_adapter_exposes_observer_subscription_separately_from_proxy():
     adapter = NetworkEventAdapter()
     calls = []

@@ -78,6 +78,21 @@ class ServerBroadcaster:
         """Notify clients only after Match has finalized the result."""
         self._publish(self._metadata("GAME_OVER"))
 
+    def publish_player_disconnected(self, color, grace_period_seconds: float) -> None:
+        """Notify remaining clients that the authoritative game is now paused."""
+        payload = self._metadata("PLAYER_DISCONNECTED")
+        payload.update({
+            "color": str(color),
+            "grace_period_seconds": grace_period_seconds,
+        })
+        self._publish(payload)
+
+    def publish_player_reconnected(self, color) -> None:
+        """Notify clients that one disconnected player seat has returned."""
+        payload = self._metadata("PLAYER_RECONNECTED")
+        payload["color"] = str(color)
+        self._publish(payload)
+
 
 def _position_payload(position) -> dict[str, int]:
     return {"row": position.row, "col": position.col}

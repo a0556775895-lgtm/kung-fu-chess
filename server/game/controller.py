@@ -56,6 +56,8 @@ class GameController:
         """Reject forged role, color, source or piece claims before game-rule checks."""
         if not match.has_connection(context):
             return "connection_not_registered"
+        if match.is_paused:
+            return "game_paused"
         if context.role is not ConnectionRole.PLAYER:
             return "spectator_forbidden"
         if context.color is None:

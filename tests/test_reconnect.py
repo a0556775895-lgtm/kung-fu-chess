@@ -10,6 +10,7 @@ from model.game_config import GameConfig
 from model.piece import PieceColor
 from networking.protocols.game import (
     JoinRequest,
+    decode_event,
     decode_state,
     parse_config_response,
 )
@@ -86,14 +87,18 @@ def test_disconnect_and_restore_preserve_match_color_and_snapshot():
         assert result.context.username == "Alice"
         assert result.context.session_token == "session-token"
 
-        config_message, state_message = _drain(result.context)
+        config_message, state_message, reconnect_message = _drain(result.context)
         config = parse_config_response(config_message)
         state = decode_state(state_message)
+        reconnect_event = decode_event(reconnect_message)
         assert config.was_overridden
         assert config.effective_config == STANDARD_GAME_CONFIG
         assert state.game_id == "game-1"
         assert state.assigned_color == "w"
         assert state.player_names["w"] == "Alice"
+        assert reconnect_event["type"] == "PLAYER_RECONNECTED"
+        assert reconnect_event["color"] == "w"
+        assert not match.is_paused
 
     asyncio.run(scenario())
 
@@ -250,5 +255,167 @@ def test_failed_admission_leaves_session_available_for_retry():
 
         assert not session.is_connected
         assert sessions.get("session-token") is session
+
+    asyncio.run(scenario())
+
+
+def test_disconnect_timeout_finishes_paused_match_without_advancing_clock():
+    async def no_wait(_seconds):
+        return None
+
+    async def scenario():
+        sessions, session, registry, match, context, _ = _setup_active_player()
+        service = ReconnectService(
+            sessions,
+            registry,
+            GameAdmission(registry),
+            grace_period_seconds=20,
+            sleep=no_wait,
+        )
+        opponent = ConnectionContext(
+            "opponent",
+            "game-1",
+            ConnectionRole.PLAYER,
+            PieceColor.BLACK,
+            user_id=2,
+            username="Bob",
+            session_token="bob-token",
+            websocket=object(),
+        )
+        match.add_connection(opponent)
+        match.advance_time(125)
+
+        assert await service.disconnect(session, context)
+        assert match.is_paused
+        match.advance_time(5_000)
+        assert match.server_time_ms() == 125
+
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        assert match.result == GameResult(
+            winner_color=PieceColor.BLACK,
+            reason=FinishReason.DISCONNECT,
+            duration_ms=125,
+        )
+        disconnected_message, state_message, game_over_message = _drain(opponent)
+        assert decode_event(disconnected_message)["type"] == "PLAYER_DISCONNECTED"
+        final_state = decode_state(state_message)
+        assert final_state.game_over
+        assert final_state.winner_color == "b"
+        assert decode_event(game_over_message)["type"] == "GAME_OVER"
+        assert sessions.get("session-token") is None
+
+    asyncio.run(scenario())
+
+
+def test_reconnect_before_timeout_cancels_loss_and_resumes_match():
+    sleep_started = asyncio.Event()
+
+    async def waiting_sleep(_seconds):
+        sleep_started.set()
+        await asyncio.Future()
+
+    # Build this scenario without exposing timing internals through real sleeps.
+    async def scenario():
+        sessions, session, registry, match, context, _ = _setup_active_player()
+        service = ReconnectService(
+            sessions,
+            registry,
+            GameAdmission(registry),
+            sleep=waiting_sleep,
+        )
+        await service.disconnect(session, context)
+        await sleep_started.wait()
+
+        await service.restore(
+            JoinRequest(
+                "join-reconnect",
+                "session-token",
+                STANDARD_GAME_CONFIG,
+            ),
+            object(),
+        )
+        await asyncio.sleep(0)
+
+        assert not match.is_paused
+        assert match.result is None
+        match.advance_time(50)
+        assert match.server_time_ms() == 50
+        await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_reconnect_service_rejects_invalid_grace_period():
+    sessions, _, registry, _, _, _ = _setup_active_player()
+    with pytest.raises(ValueError, match="INVALID_RECONNECT_GRACE_PERIOD"):
+        ReconnectService(
+            sessions,
+            registry,
+            GameAdmission(registry),
+            grace_period_seconds=-1,
+        )
+
+
+def test_repeated_disconnect_replaces_previous_grace_timer():
+    async def scenario():
+        _, session, _, match, context, service = _setup_active_player()
+
+        assert await service.disconnect(session, context)
+        first_timeout = service._timeouts["session-token"]
+        assert await service.disconnect(session, context)
+        await asyncio.sleep(0)
+
+        assert first_timeout.cancelled()
+        assert match.is_paused
+        await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_stale_timeout_and_removed_session_exit_without_finishing_match():
+    async def no_wait(_seconds):
+        return None
+
+    async def scenario():
+        sessions, _, registry, match, _, _ = _setup_active_player()
+        service = ReconnectService(
+            sessions,
+            registry,
+            GameAdmission(registry),
+            sleep=no_wait,
+        )
+
+        await service._expire_after_grace("session-token")
+
+        service._timeouts["session-token"] = asyncio.current_task()
+        sessions.release("session-token")
+        await service._expire_after_grace("session-token")
+
+        assert match.result is None
+
+    asyncio.run(scenario())
+
+
+def test_timeout_releases_session_when_match_was_removed_during_grace():
+    async def no_wait(_seconds):
+        return None
+
+    async def scenario():
+        sessions, session, registry, _, _, _ = _setup_active_player()
+        service = ReconnectService(
+            sessions,
+            registry,
+            GameAdmission(registry),
+            sleep=no_wait,
+        )
+        sessions.mark_disconnected(session.token)
+        registry.remove("game-1")
+        service._timeouts[session.token] = asyncio.current_task()
+
+        await service._expire_after_grace(session.token)
+
+        assert sessions.get(session.token) is None
 
     asyncio.run(scenario())

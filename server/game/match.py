@@ -40,6 +40,7 @@ class Match:
         self._player_usernames = {}
         self._sequence = 0
         self._result = None
+        self._disconnected_colors = set()
         self._completion_service = completion_service
         self.broadcaster = ServerBroadcaster(
             game_id=game_id,
@@ -103,8 +104,15 @@ class Match:
         if not self.has_connection(context):
             raise ValueError("CONNECTION_NOT_REGISTERED")
         base = self.engine.snapshot()
+        final_winner = (
+            str(self._result.winner_color)
+            if self._result is not None
+            else base.winner_color
+        )
         return replace(
             base,
+            game_over=base.game_over or self._result is not None,
+            winner_color=final_winner,
             player_names=self._player_names(),
             game_id=self.game_id,
             role=context.role.value,
@@ -134,6 +142,8 @@ class Match:
         """Advance this Match and convert a king capture into one final result."""
         if milliseconds < 0:
             raise ValueError("NEGATIVE_TICK")
+        if self.is_paused:
+            return
         self.engine.wait(milliseconds)
         if self.engine.game_over and self._result is None:
             if self.engine.winner_color is None:
@@ -143,6 +153,34 @@ class Match:
                 reason=FinishReason.KING_CAPTURE,
                 duration_ms=self.server_time_ms(),
             ))
+
+    def pause_for(self, color: PieceColor) -> bool:
+        """Pause the whole game while one player seat is disconnected."""
+        if not isinstance(color, PieceColor):
+            raise ValueError("INVALID_PLAYER_COLOR")
+        if self._result is not None:
+            return False
+        was_paused = self.is_paused
+        self._disconnected_colors.add(color)
+        return not was_paused
+
+    def resume_for(self, color: PieceColor) -> bool:
+        """Resume only after every disconnected player seat has returned."""
+        if not isinstance(color, PieceColor):
+            raise ValueError("INVALID_PLAYER_COLOR")
+        was_paused = self.is_paused
+        self._disconnected_colors.discard(color)
+        return was_paused and not self.is_paused
+
+    @property
+    def is_paused(self) -> bool:
+        """Whether at least one player seat is currently disconnected."""
+        return bool(self._disconnected_colors)
+
+    @property
+    def disconnected_colors(self) -> frozenset[PieceColor]:
+        """Expose an immutable view of the seats currently keeping the game paused."""
+        return frozenset(self._disconnected_colors)
 
     def finish(self, result: GameResult) -> bool:
         """Store the first final result and ignore repeated finish attempts."""
@@ -163,6 +201,7 @@ class Match:
                 result=result,
             )
         self._result = result
+        self.broadcast_state()
         self.broadcaster.publish_game_over()
         return True
 
@@ -187,3 +226,4 @@ class Match:
         self._connections.clear()
         self._player_user_ids.clear()
         self._player_usernames.clear()
+        self._disconnected_colors.clear()
