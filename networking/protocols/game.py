@@ -1,6 +1,6 @@
 """Pure text protocol parsing and encoding for multiplayer game messages."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import re
 from typing import Any
@@ -8,6 +8,10 @@ from typing import Any
 from engine.snapshot import GameSnapshot
 from model.game_config import GameConfig
 from model.position import Position
+from networking.protocols._validation import (
+    is_valid_request_id,
+    is_valid_session_token,
+)
 from networking.serializers.game_config import (
     GameConfigSerializationError,
     GameConfigSerializer,
@@ -15,7 +19,6 @@ from networking.serializers.game_config import (
 from networking.serializers.snapshot import GameSnapshotSerializer
 
 
-_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 _MOVE_RE = re.compile(r"^(?P<color>[WB])(?P<kind>[PNBRQK])(?P<src>[a-h][1-8])(?P<dst>[a-h][1-8])$")
 _JUMP_RE = re.compile(r"^(?P<color>[WB])(?P<kind>[PNBRQK])(?P<src>[a-h][1-8])$")
 
@@ -59,6 +62,7 @@ class JoinRequest:
     """A client's request to join using its preferred game configuration."""
 
     request_id: str
+    session_token: str = field(repr=False)
     requested_config: GameConfig
 
 
@@ -77,22 +81,27 @@ ClientCommand = MoveCommand | JumpCommand
 def encode_join(request: JoinRequest) -> str:
     """Encode the mandatory first message sent by a joining client."""
     _validate_request_id(request.request_id)
-    return f"JOIN {request.request_id} {GameConfigSerializer.to_json(request.requested_config)}"
+    _validate_session_token(request.session_token)
+    return (
+        f"JOIN {request.request_id} {request.session_token} "
+        f"{GameConfigSerializer.to_json(request.requested_config)}"
+    )
 
 
 def parse_join(message: str) -> JoinRequest:
     """Parse a JOIN envelope and validate its requested GameConfig structure."""
     if not isinstance(message, str):
         raise ProtocolError("MESSAGE_NOT_TEXT")
-    parts = message.strip().split(maxsplit=2)
-    if len(parts) != 3 or parts[0] != "JOIN":
+    parts = message.strip().split(maxsplit=3)
+    if len(parts) != 4 or parts[0] != "JOIN":
         raise ProtocolError("MALFORMED_JOIN")
     _validate_request_id(parts[1])
+    _validate_session_token(parts[2])
     try:
-        config = GameConfigSerializer.from_json(parts[2])
+        config = GameConfigSerializer.from_json(parts[3])
     except GameConfigSerializationError as exc:
         raise ProtocolError(str(exc)) from exc
-    return JoinRequest(parts[1], config)
+    return JoinRequest(parts[1], parts[2], config)
 
 
 def encode_config_accepted(request_id: str, config: GameConfig) -> str:
@@ -260,8 +269,13 @@ def position_to_algebraic(position: Position) -> str:
 
 
 def _validate_request_id(request_id: str) -> None:
-    if not isinstance(request_id, str) or _REQUEST_ID_RE.fullmatch(request_id) is None:
+    if not is_valid_request_id(request_id):
         raise ProtocolError("INVALID_REQUEST_ID")
+
+
+def _validate_session_token(session_token: str) -> None:
+    if not is_valid_session_token(session_token):
+        raise ProtocolError("INVALID_SESSION_TOKEN")
 
 
 def _encode_config_response(kind: str, request_id: str, config: GameConfig) -> str:

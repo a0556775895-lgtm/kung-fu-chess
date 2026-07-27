@@ -66,6 +66,21 @@ def test_mark_disconnected_is_idempotent_and_reports_missing_session():
     assert registry.mark_disconnected("missing-token") is None
 
 
+def test_mark_connected_and_clear_restore_then_release_registry_state():
+    registry = _registry("token-1", "token-2")
+    first = registry.create(1, "Alice", 1200)
+    registry.create(2, "Bob", 1200)
+    registry.mark_disconnected("token-1")
+
+    assert registry.mark_connected("token-1") is first
+    assert first.is_connected
+    assert registry.mark_connected("missing-token") is None
+    assert registry.clear() == 2
+    assert registry.clear() == 0
+    assert len(registry) == 0
+    assert registry.active_usernames() == ()
+
+
 def test_unicode_equivalent_names_share_one_identity():
     registry = _registry("token-1", "token-2")
     composed = "Café"
@@ -114,7 +129,7 @@ def test_registry_validates_factory_tokens_and_collisions():
 
 @pytest.mark.parametrize(
     "operation",
-    ["get", "mark_disconnected", "release"],
+    ["get", "mark_disconnected", "mark_connected", "release"],
 )
 def test_registry_rejects_invalid_lookup_token(operation):
     registry = _registry()

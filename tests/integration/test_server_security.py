@@ -34,8 +34,14 @@ async def _send_join(websocket, request_id, requested_config=STANDARD_GAME_CONFI
             RegisterRequest(f"register-{username}", username, PASSWORD)
         )
     )
-    parse_auth_response(await websocket.recv())
-    await websocket.send(encode_join(JoinRequest(request_id, requested_config)))
+    auth_response = parse_auth_response(await websocket.recv())
+    await websocket.send(encode_join(
+        JoinRequest(
+            request_id,
+            auth_response.session_token,
+            requested_config,
+        )
+    ))
 
 
 async def _receive_admission(websocket):

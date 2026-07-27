@@ -23,6 +23,7 @@ from server.services.matchmaker import (
     MatchmakingPlayer,
     MatchmakingTimeoutError,
 )
+from server.services.reconnect import ReconnectError, ReconnectService
 from server.services.session_registry import SessionRegistry
 from server.services.auth import AuthError
 from server.transport.connection_io import run_connection_io
@@ -48,6 +49,7 @@ class GameServer:
         self._port = port
         self._server: Server | None = None
         self._tick_task = None
+        self._closing = False
         self._registry = registry if registry is not None else GameRegistry()
         self._sessions = (
             session_registry if session_registry is not None else SessionRegistry()
@@ -61,6 +63,11 @@ class GameServer:
             self._admission.admit_pair,
             rating_range=match_rating_range,
             timeout_seconds=match_timeout_seconds,
+        )
+        self._reconnect = ReconnectService(
+            self._sessions,
+            self._registry,
+            self._admission,
         )
         self._controller = GameController(self._registry)
 
@@ -81,6 +88,7 @@ class GameServer:
         """מפעילה את השרת"""
         if self._server is not None:
             raise RuntimeError("server_already_running")
+        self._closing = False
         self._server = await serve(self._handle_connection, self._host, self._port)
         self._tick_task = asyncio.create_task(run_tick_loop(self._registry), name="server-tick")
 
@@ -96,6 +104,7 @@ class GameServer:
             return
         server = self._server
         self._server = None
+        self._closing = True
         tick_task = self._tick_task
         self._tick_task = None
         if tick_task is not None:
@@ -103,14 +112,43 @@ class GameServer:
             await asyncio.gather(tick_task, return_exceptions=True)
         server.close()
         await server.wait_closed()
+        self._sessions.clear()
 
     async def _handle_connection(self, connection: ServerConnection) -> None:
-        """Require account authentication before JOIN and authorized game I/O."""
+        """Route one token-bearing JOIN to matchmaking or session restoration."""
         context = None
         session = None
         try:
+            first_message = await connection.recv()
+            if (
+                isinstance(first_message, str)
+                and first_message.startswith("JOIN ")
+            ):
+                try:
+                    join_request = parse_join(first_message)
+                except ProtocolError as exc:
+                    await connection.send(encode_error("0", str(exc).lower()))
+                    await connection.close(code=1008, reason="invalid_join")
+                    return
+
+                try:
+                    session, result = await self._reconnect.restore(
+                        join_request,
+                        connection,
+                    )
+                except ReconnectError as exc:
+                    await connection.send(
+                        encode_error(join_request.request_id, exc.reason)
+                    )
+                    await connection.close(code=1008, reason="reconnect_rejected")
+                    return
+
+                context = result.context
+                await run_connection_io(context, self._controller)
+                return
+
             try:
-                auth_request = parse_auth_request(await connection.recv())
+                auth_request = parse_auth_request(first_message)
             except AuthProtocolError as exc:
                 await connection.send(encode_error("0", str(exc).lower()))
                 await connection.close(code=1008, reason="invalid_auth_request")
@@ -165,6 +203,13 @@ class GameServer:
                 await connection.close(code=1008, reason="invalid_join")
                 return
 
+            if join_request.session_token != session.token:
+                await connection.send(
+                    encode_error(join_request.request_id, "invalid_session_token")
+                )
+                await connection.close(code=1008, reason="join_rejected")
+                return
+
             rejection = self._admission.rejection_for(join_request)
             if rejection is not None:
                 await connection.send(rejection)
@@ -193,8 +238,12 @@ class GameServer:
             pass
         finally:
             if context is not None:
-                self._admission.release(context)
-            if session is not None:
+                if self._closing:
+                    self._admission.release(context)
+                    self._sessions.release(session.token)
+                else:
+                    await self._reconnect.disconnect(session, context)
+            elif session is not None:
                 self._sessions.release(session.token)
 
     async def _wait_for_match(

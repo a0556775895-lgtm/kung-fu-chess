@@ -74,11 +74,11 @@ def test_production_composition_persists_match_completion(sqlite_path):
 async def _admit_players_and_finish(server, white, black):
     white_player = MatchmakingPlayer(
         ActiveSession("white-token", white.id, white.username, white.rating),
-        JoinRequest("join-white", STANDARD_GAME_CONFIG),
+        JoinRequest("join-white", "white-token", STANDARD_GAME_CONFIG),
     )
     black_player = MatchmakingPlayer(
         ActiveSession("black-token", black.id, black.username, black.rating),
-        JoinRequest("join-black", STANDARD_GAME_CONFIG),
+        JoinRequest("join-black", "black-token", STANDARD_GAME_CONFIG),
     )
     admissions = server._admission.admit_pair(white_player, black_player)
     white_admission = admissions["white-token"]

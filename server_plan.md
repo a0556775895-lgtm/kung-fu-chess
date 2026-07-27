@@ -78,9 +78,9 @@ kung-fu-chess/
 │
 ├── networking/                       [חדש B] חוזי תעבורה משותפים, ללא I/O וללא חוקי משחק
 │   ├── protocols/
-│   │   ├── game.py                     [חדש B] קידוד/פענוח MOVE/JUMP/STATE/EVENT
+│   │   ├── game.py                     [חדש B/E3] JOIN עם token וכן MOVE/JUMP/STATE/EVENT
 │   │   ├── auth.py                     [חדש D] REGISTER/LOGIN/AUTH_OK
-│   │   └── session.py                  [חדש E3] RECONNECT/RECONNECT_OK
+│   │   └── _validation.py              [חדש E3] ולידציה משותפת של request ID ו-token
 │   └── serializers/
 │       ├── game_config.py              [חדש B3] JSON ↔ GameConfig
 │       └── snapshot.py                 [חדש B] JSON ↔ GameSnapshot, כולל schema/version
@@ -273,7 +273,7 @@ NetworkClient מקבל                                                    Networ
 |---|---|---|
 | E1 — Session token ו-SessionRegistry | הושלם ואושר | `SessionRegistry` מחליף את רישום השמות הפעילים, מחזיק `ActiveSession` לפי token ושם מנורמל ומונע חיבור כפול. `AUTH_OK` מחזיר token אקראי והלקוחה שומרת אותו; עדיין אין reconnect. כל 390 בדיקות הפרויקט עוברות בכיסוי לוגיקה נמדדת של 100% |
 | E2 — Matchmaker דרך JOIN הקיים | מומש וממתין לאישור | `JOIN` מכניס לתור המחולק ל־rating buckets; טווח הדירוג וזמן ההמתנה נקבעים ב־`server/config.py` ומוזרקים ל־`Matchmaker`. החיפוש בוחר את הדירוג הקרוב ביותר ואז את הממתינה הוותיקה ביותר. כל זוג יוצר `Match` מבודד עם `game_id` ייחודי ב־`GameRegistry`; הראשונה קובעת את הקונפיג, ניתוק מסיר מהתור, ופקיעת זמן ההמתנה מסתיימת ב־`ERR match_timeout`. ארבע שחקניות יכולות כעת לשחק בשני משחקים מקבילים במקום לקבל `server_full`. כל 405 בדיקות הפרויקט עוברות בכיסוי לוגיקה נמדדת של 100% |
-| E3 — ניתוק, countdown ו-RECONNECT בשרת | בביצוע — E3.1 אושר; E3.2 מומש וממתין לאישור | E3.1 מגדיר חלון חסד בקונפיג וחוזה טקסטואלי נפרד של `RECONNECT`/`RECONNECT_OK`; פרוטוקולים ו־serializers אורגנו בתתי־תיקיות. E3.2 מוסיף `SessionRegistry.mark_disconnected()` ששומר token, שם, `game_id` וצבע, ומפריד ב־`Match` בין מקום קבוע של שחקנית לבין חיבור חי: שם ו־user ID נשמרים לאחר הסרת החיבור, חיבור כפול לאותו צבע והשתלטות משתמשת אחרת נחסמים. היכולת עדיין אינה מחוברת ל־`GameServer`; שחזור WebSocket ופקיעת זמן יבוצעו רק בשלבים הבאים. כל 430 בדיקות הפרויקט עוברות בכיסוי לוגיקה נמדדת של 100% |
+| E3 — ניתוק, countdown ו-reconnect בשרת | בביצוע — E3.1–E3.2 אושרו; E3.3 מומש וממתין לאישור | חלון החסד מוגדר בקונפיג, ו־`Match`/`SessionRegistry` שומרים מקום וזהות ללא חיבור חי. ב־E3.3 בוטלה פקודת `RECONNECT` הנפרדת: כל `JOIN` נושא token חובה ומנותב לפי מצב ה־Session ל־Matchmaker או ל־`ReconnectService`. השירות משחזר `ConnectionContext` באותו `game_id`, צבע וזהות, מחזיר config ו־snapshot מלא, מונע token זר ושתי בקשות reconnect מקבילות, ושומר Session מנותק תוך ניקוי מלא בכיבוי שרת. timeout, countdown והפסד `DISCONNECT` עדיין ממתינים ל־E3.4. כל 424 בדיקות הפרויקט עוברות בכיסוי לוגיקה נמדדת של 100% |
 | E4 — Reconnect בלקוחה ובדיקות E2E | ממתין | `NetworkClient` משתמשת ב-token, חוסמת פקודות בזמן reconnect ומציגה countdown; נבדקים timeout, reconnect, הפסד בניתוק, ELO ושני משחקים מבודדים |
 
 - נשתמש ב-`JOIN` ובמעטפת `EVENT` הקיימים ולא נוסיף פקודת `PLAY`.

@@ -207,22 +207,23 @@ def test_network_client_close_releases_server_connection(auth_service):
     asyncio.run(scenario())
 
 
-def test_network_client_logs_in_to_persisted_account_after_disconnect(auth_service):
+def test_network_client_blocks_login_while_disconnected_session_is_reserved(
+    auth_service,
+):
     async def scenario():
         server = GameServer(port=0, auth_service=auth_service)
         await server.start()
-        registered = registered_opponent = logged_in = login_opponent = None
+        registered = registered_opponent = None
         try:
             registered, registered_opponent = await _start_pair(server)
-            registered_user_id = registered.auth_response.user_id
             await _close_clients(registered, registered_opponent)
 
-            logged_in, login_opponent = await _start_pair(server, register=False)
-
-            assert logged_in.auth_response.user_id == registered_user_id
-            assert logged_in.auth_response.username == "Alice"
+            with pytest.raises(
+                AuthenticationRejectedError,
+                match="user_already_connected",
+            ):
+                await _start_client(server, register=False)
         finally:
-            await _close_clients(logged_in, login_opponent)
             await server.close()
 
     asyncio.run(scenario())

@@ -117,6 +117,25 @@ class GameAdmission:
         if match.has_connection(context):
             match.remove_connection(context.connection_id)
 
+    def restore(
+        self,
+        session,
+        request: JoinRequest,
+        websocket,
+    ) -> AdmissionResult:
+        """Attach a new connection to one persistent authenticated player seat."""
+        match = self._registry.get(session.game_id)
+        player = MatchmakingPlayer(
+            session=session,
+            request=request,
+            websocket=websocket,
+        )
+        context = self._create_context(player, match, session.color)
+        match.add_connection(context)
+        self._enqueue_config(context, request, match)
+        match.send_state(context)
+        return AdmissionResult(context, match)
+
     def _create_context(
         self,
         player: MatchmakingPlayer,

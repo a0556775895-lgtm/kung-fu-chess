@@ -242,7 +242,11 @@ class NetworkClient:
                 raise ConnectionError("auth_request_id_mismatch")
             self._session_token = self._auth_response.session_token
             #אחרי שהושלם האימות - יוצרת חיבור למשחק
-            join = JoinRequest(f"join-{uuid.uuid4().hex}", self._requested_config)
+            join = JoinRequest(
+                f"join-{uuid.uuid4().hex}",
+                self._session_token,
+                self._requested_config,
+            )
             await websocket.send(encode_join(join))
 
             config_message = await asyncio.wait_for(

@@ -84,9 +84,10 @@ def test_event_envelope_round_trip():
 
 def test_join_round_trip():
     config = GameConfig(1, 8, 8, "standard")
-    request = JoinRequest("join-1", config)
+    request = JoinRequest("join-1", "session-token", config)
 
     assert parse_join(encode_join(request)) == request
+    assert "session-token" not in repr(request)
 
 
 def test_config_accepted_round_trip():
@@ -112,9 +113,10 @@ def test_config_overridden_round_trip():
     "message,reason",
     [
         ("MOVE join-1 {}", "MALFORMED_JOIN"),
-        ("JOIN bad/id {}", "INVALID_REQUEST_ID"),
-        ("JOIN join-1 not-json", "INVALID_GAME_CONFIG_JSON"),
-        ("JOIN join-1 {}", "INVALID_GAME_CONFIG_FIELDS"),
+        ("JOIN bad/id token {}", "INVALID_REQUEST_ID"),
+        ("JOIN join-1 invalid+token {}", "INVALID_SESSION_TOKEN"),
+        ("JOIN join-1 token not-json", "INVALID_GAME_CONFIG_JSON"),
+        ("JOIN join-1 token {}", "INVALID_GAME_CONFIG_FIELDS"),
     ],
 )
 def test_rejects_malformed_join(message, reason):

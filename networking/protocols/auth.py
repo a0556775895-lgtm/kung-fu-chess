@@ -2,11 +2,13 @@
 """מגדיר כיצד הודעות אימות עוברות ברשת, ומספק פונקציות קידוד ופענוח"""
 from dataclasses import dataclass, field
 import json
-import re
 from typing import TypeAlias
 
+from networking.protocols._validation import (
+    is_valid_request_id,
+    is_valid_session_token,
+)
 
-_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 MIN_USERNAME_LENGTH = 2
 MAX_USERNAME_LENGTH = 20
 
@@ -157,16 +159,12 @@ def _validate_response(response: AuthResponse) -> None:
         or response.rating < 0
     ):
         raise AuthProtocolError("INVALID_RATING")
-    if (
-        not isinstance(response.session_token, str)
-        or not response.session_token
-        or len(response.session_token) > 256
-    ):
+    if not is_valid_session_token(response.session_token):
         raise AuthProtocolError("INVALID_SESSION_TOKEN")
 
 
 def _validate_request_id(request_id: str) -> None:
-    if not isinstance(request_id, str) or _REQUEST_ID_RE.fullmatch(request_id) is None:
+    if not is_valid_request_id(request_id):
         raise AuthProtocolError("INVALID_REQUEST_ID")
 
 

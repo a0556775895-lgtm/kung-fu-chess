@@ -20,7 +20,7 @@ def _player(token, rating):
     session = ActiveSession(token, user_id, token, rating)
     return MatchmakingPlayer(
         session,
-        JoinRequest(f"join-{token}", STANDARD_GAME_CONFIG),
+        JoinRequest(f"join-{token}", token, STANDARD_GAME_CONFIG),
     )
 
 

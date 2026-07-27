@@ -36,7 +36,7 @@ def _admission_with_predictable_ids():
 def _player(token, user_id, username, request_id, config=STANDARD_GAME_CONFIG):
     return MatchmakingPlayer(
         ActiveSession(token, user_id, username, 1200),
-        JoinRequest(request_id, config),
+        JoinRequest(request_id, token, config),
     )
 
 
@@ -109,7 +109,11 @@ def test_first_player_config_is_authoritative_for_second(monkeypatch):
 def test_rejection_for_unsupported_config_does_not_create_match():
     registry, admission = _admission_with_predictable_ids()
     unsupported = GameConfig(1, 10, 10, "future")
-    request = JoinRequest("join-unsupported", unsupported)
+    request = JoinRequest(
+        "join-unsupported",
+        "unsupported-token",
+        unsupported,
+    )
 
     rejection = admission.rejection_for(request)
 

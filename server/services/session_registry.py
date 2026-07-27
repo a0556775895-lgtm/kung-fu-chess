@@ -62,6 +62,14 @@ class SessionRegistry:
             session.is_connected = False
         return session
 
+    def mark_connected(self, token: str) -> ActiveSession | None:
+        """Mark one retained session as owning a live socket again."""
+        _validate_token(token)
+        session = self._by_token.get(token)
+        if session is not None:
+            session.is_connected = True
+        return session
+
     def release(self, token: str) -> bool:
         """Remove one session by token, returning whether it was active."""
         _validate_token(token)
@@ -70,6 +78,13 @@ class SessionRegistry:
             return False
         self._token_by_username.pop(_identity_key(session.username), None)
         return True
+
+    def clear(self) -> int:
+        """Release every session during an explicit server shutdown."""
+        count = len(self._by_token)
+        self._by_token.clear()
+        self._token_by_username.clear()
+        return count
 
     def is_active(self, username: str) -> bool:
         """Return whether an equivalent username is currently reserved."""
