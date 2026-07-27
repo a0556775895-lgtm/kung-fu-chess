@@ -41,6 +41,8 @@ def make_context(
     role=ConnectionRole.PLAYER,
     maxsize=256,
     user_id=None,
+    username=None,
+    session_token=None,
 ):
     """Build a connection with a configurable bounded queue for backpressure tests."""
     return ConnectionContext(
@@ -49,6 +51,8 @@ def make_context(
         role=role,
         color=color,
         user_id=user_id,
+        username=username,
+        session_token=session_token,
         outbound=asyncio.Queue(maxsize=maxsize),
     )
 
@@ -163,6 +167,119 @@ def test_match_snapshot_is_personalized_per_connection():
     assert snapshot.role == "SPECTATOR"
     assert snapshot.assigned_color is None
     assert snapshot.sequence == 1
+
+
+def test_match_retains_player_seat_and_name_without_live_connection():
+    match = Match("game-1", make_engine())
+    original = make_context(
+        "original",
+        "game-1",
+        color=PieceColor.WHITE,
+        user_id=1,
+        username="Alice",
+        session_token="alice-token",
+    )
+    match.add_connection(original)
+
+    assert match.remove_connection("original") is original
+    assert match.connections() == ()
+    assert match.player_user_ids == {PieceColor.WHITE: 1}
+    assert match.player_usernames == {PieceColor.WHITE: "Alice"}
+
+    restored = make_context(
+        "restored",
+        "game-1",
+        color=PieceColor.WHITE,
+        user_id=1,
+        username="Alice",
+        session_token="alice-token",
+    )
+    match.add_connection(restored)
+    match.send_state(restored)
+
+    snapshot = decode_state(restored.outbound.get_nowait())
+    assert snapshot.player_names == {"w": "Alice", "b": "Black"}
+
+
+def test_match_prevents_reserved_seat_takeover_and_duplicate_live_color():
+    match = Match("game-1", make_engine())
+    alice = make_context(
+        "alice",
+        "game-1",
+        color=PieceColor.WHITE,
+        user_id=1,
+        username="Alice",
+    )
+    duplicate_alice = make_context(
+        "duplicate-alice",
+        "game-1",
+        color=PieceColor.WHITE,
+        user_id=1,
+        username="Alice",
+    )
+    bob = make_context(
+        "bob",
+        "game-1",
+        color=PieceColor.WHITE,
+        user_id=2,
+        username="Bob",
+    )
+    match.add_connection(alice)
+
+    with pytest.raises(ValueError, match="PLAYER_SEAT_ALREADY_CONNECTED"):
+        match.add_connection(duplicate_alice)
+
+    match.remove_connection("alice")
+    with pytest.raises(ValueError, match="PLAYER_SEAT_ALREADY_ASSIGNED"):
+        match.add_connection(bob)
+
+    assert match.player_user_ids == {PieceColor.WHITE: 1}
+    assert match.player_usernames == {PieceColor.WHITE: "Alice"}
+
+
+def test_disconnected_player_seats_remain_isolated_between_matches():
+    first = Match("first", make_engine())
+    second = Match("second", make_engine())
+    first_alice = make_context(
+        "alice",
+        "first",
+        color=PieceColor.WHITE,
+        user_id=1,
+        username="Alice",
+    )
+    second_bob = make_context(
+        "bob",
+        "second",
+        color=PieceColor.WHITE,
+        user_id=2,
+        username="Bob",
+    )
+    first.add_connection(first_alice)
+    second.add_connection(second_bob)
+
+    first.remove_connection("alice")
+    second.remove_connection("bob")
+
+    assert first.player_usernames == {PieceColor.WHITE: "Alice"}
+    assert second.player_usernames == {PieceColor.WHITE: "Bob"}
+
+
+def test_match_close_releases_persistent_player_seats():
+    match = Match("game-1", make_engine())
+    context = make_context(
+        "alice",
+        "game-1",
+        color=PieceColor.WHITE,
+        user_id=1,
+        username="Alice",
+    )
+    match.add_connection(context)
+
+    match.close()
+
+    assert match.connections() == ()
+    assert match.player_user_ids == {}
+    assert match.player_usernames == {}
 
 
 def test_slow_connection_does_not_block_and_records_drop():

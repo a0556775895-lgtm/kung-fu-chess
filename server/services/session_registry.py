@@ -54,6 +54,14 @@ class SessionRegistry:
         _validate_token(token)
         return self._by_token.get(token)
 
+    def mark_disconnected(self, token: str) -> ActiveSession | None:
+        """Retain one session and its reserved identity without a live socket."""
+        _validate_token(token)
+        session = self._by_token.get(token)
+        if session is not None:
+            session.is_connected = False
+        return session
+
     def release(self, token: str) -> bool:
         """Remove one session by token, returning whether it was active."""
         _validate_token(token)

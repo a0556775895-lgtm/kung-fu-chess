@@ -37,6 +37,7 @@ class Match:
         self.game_config = game_config
         self._connections = {}
         self._player_user_ids = {}
+        self._player_usernames = {}
         self._sequence = 0
         self._result = None
         self._completion_service = completion_service
@@ -59,7 +60,21 @@ class Match:
             and context.color is not None
             and context.user_id is not None
         ):
+            assigned_user_id = self._player_user_ids.get(context.color)
+            if (
+                assigned_user_id is not None
+                and assigned_user_id != context.user_id
+            ):
+                raise ValueError("PLAYER_SEAT_ALREADY_ASSIGNED")
+            if any(
+                connection.role is ConnectionRole.PLAYER
+                and connection.color is context.color
+                for connection in self._connections.values()
+            ):
+                raise ValueError("PLAYER_SEAT_ALREADY_CONNECTED")
             self._player_user_ids[context.color] = context.user_id
+            if context.username is not None:
+                self._player_usernames[context.color] = context.username
         self._connections[context.connection_id] = context
 
     def remove_connection(self, connection_id: str):
@@ -98,11 +113,10 @@ class Match:
         )
 
     def _player_names(self) -> dict[str, str]:
-        """Map assigned colors to display names, retaining labels for empty seats."""
+        """Map persistent player seats to names, even without a live socket."""
         names = {"w": "White", "b": "Black"}
-        for connection in self.connections():
-            if connection.color is not None and connection.username is not None:
-                names[str(connection.color)] = connection.username
+        for color, username in self._player_usernames.items():
+            names[str(color)] = username
         return names
 
     def send_state(self, context) -> None:
@@ -162,7 +176,14 @@ class Match:
         """Return persistent seat identities independently of live connections."""
         return dict(self._player_user_ids)
 
+    @property
+    def player_usernames(self) -> dict[PieceColor, str]:
+        """Return persistent display names independently of live connections."""
+        return dict(self._player_usernames)
+
     def close(self) -> None:
         """Unsubscribe the broadcaster and release all connection references."""
         self.broadcaster.close()
         self._connections.clear()
+        self._player_user_ids.clear()
+        self._player_usernames.clear()
