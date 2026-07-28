@@ -37,6 +37,7 @@ class DisplayManager:
         game_updater=None,
         event_source=None,
         starts_game=None,
+        extra_renderers=(),
     ):
         """Build local mode by default, or use an injected local/remote game source."""
         local_mode = board is None and game_engine is None
@@ -61,6 +62,7 @@ class DisplayManager:
         self._game_updater = game_updater
         self._event_source = event_source
         self._starts_game = local_mode if starts_game is None else starts_game
+        self._extra_renderers = tuple(extra_renderers)
 
         self._geometry = BoardGeometry()
         self._background_loader = BackgroundLoader(self._geometry)
@@ -83,7 +85,7 @@ class DisplayManager:
 
         self._renderers = [self._board_renderer, self._selection_renderer, self._piece_renderer,
                             self._score_renderer, self._moves_log_renderer,
-                            self._game_over_renderer]
+                            self._game_over_renderer, *self._extra_renderers]
 
         self._observer_cancellations = [
             self._event_source.subscribe(self._piece_animator),

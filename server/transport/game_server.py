@@ -50,6 +50,7 @@ class GameServer:
             raise TypeError("AUTH_SERVICE_REQUIRED")
         self._host = host
         self._port = port
+        self._reconnect_grace_period_seconds = reconnect_grace_period_seconds
         self._server: Server | None = None
         self._tick_task = None
         self._closing = False
@@ -197,6 +198,9 @@ class GameServer:
                         username=user.username,
                         rating=user.rating,
                         session_token=session.token,
+                        reconnect_grace_seconds=(
+                            self._reconnect_grace_period_seconds
+                        ),
                     )
                 )
             )

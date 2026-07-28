@@ -11,7 +11,7 @@ from boardio.board_factory import STANDARD_GAME_CONFIG
 from bus.event_bus import EventBus
 from client import cli_auth
 from client import network_client as network_client_module
-from client.network_client import NetworkClient
+from client.network_client import ConnectionState, NetworkClient
 from client.network_event_adapter import NetworkEventAdapter
 from client.remote_game_engine_proxy import RemoteGameEngineProxy
 from client.snapshot_board_view import SnapshotBoardView
@@ -94,6 +94,7 @@ def _snapshot(**changes):
 class _FakeNetwork:
     def __init__(self, initial_state):
         self.initial_state = initial_state
+        self.is_connected = True
         self.sent = []
         self.incoming = []
 
@@ -468,6 +469,7 @@ def test_connection_io_propagates_reader_failure():
         ({"password": None}, "PASSWORD_NOT_TEXT", TypeError),
         ({"register": "yes"}, "REGISTER_FLAG_NOT_BOOLEAN", TypeError),
         ({"connect_timeout": 0}, "INVALID_CONNECT_TIMEOUT", ValueError),
+        ({"reconnect_retry_seconds": 0}, "INVALID_RECONNECT_RETRY", ValueError),
         ({"queue_size": 0}, "INVALID_QUEUE_SIZE", ValueError),
     ],
 )
@@ -510,7 +512,7 @@ def test_network_client_send_validates_type_and_capacity():
         "secret",
         queue_size=1,
     )
-    client._connected = True
+    client._state = ConnectionState.CONNECTED
     with pytest.raises(TypeError, match="OUTGOING_MESSAGE_NOT_TEXT"):
         client.send(b"bytes")
     client.send("first")
@@ -558,7 +560,7 @@ def test_network_client_start_timeout_and_generic_failure(monkeypatch):
         failed.start()
 
 
-def test_network_client_queue_stop_discards_oldest_message():
+def test_network_client_discard_outgoing_removes_pending_messages():
     client = NetworkClient(
         "ws://localhost:1",
         "Alice",
@@ -566,8 +568,8 @@ def test_network_client_queue_stop_discards_oldest_message():
         queue_size=1,
     )
     client._outgoing.put_nowait("pending")
-    client._queue_stop_signal()
-    assert client._outgoing.get_nowait() is network_client_module._STOP
+    client._discard_outgoing()
+    assert client._outgoing.empty()
 
 
 def test_network_client_reader_rejects_binary_and_full_queue():
@@ -638,6 +640,7 @@ class _FakeClientWebSocket:
                     "Alice",
                     1200,
                     "session-token",
+                    20.0,
                 )
             ),
             "auth_request_id_mismatch",
@@ -689,7 +692,7 @@ def test_network_client_handles_join_rejections(
     reason,
 ):
     auth = encode_auth_ok(
-        AuthResponse("login-fixed", 1, "Alice", 1200, "session-token")
+        AuthResponse("login-fixed", 1, "Alice", 1200, "session-token", 20.0)
     )
     websocket = _FakeClientWebSocket([auth, join_response])
     monkeypatch.setattr(
@@ -708,9 +711,43 @@ def test_network_client_handles_join_rejections(
         asyncio.run(client._run_connection())
 
 
+def test_network_client_reconnect_rejection_becomes_terminal_failure(
+    monkeypatch,
+):
+    websocket = _FakeClientWebSocket([
+        encode_error("join-fixed", "invalid_session_token"),
+    ])
+    monkeypatch.setattr(
+        network_client_module,
+        "connect",
+        lambda *_args, **_kwargs: websocket,
+    )
+    monkeypatch.setattr(
+        network_client_module.uuid,
+        "uuid4",
+        lambda: SimpleNamespace(hex="fixed"),
+    )
+    client = NetworkClient("ws://localhost:1", "Alice", "secret")
+    client._auth_response = AuthResponse(
+        "login-fixed",
+        1,
+        "Alice",
+        1200,
+        "session-token",
+        20.0,
+    )
+    client._session_token = "session-token"
+
+    with pytest.raises(
+        network_client_module.ReconnectFailedError,
+        match="invalid_session_token",
+    ):
+        asyncio.run(client._supervise_reconnects())
+
+
 def test_network_client_propagates_reader_task_failure(monkeypatch):
     auth = encode_auth_ok(
-        AuthResponse("login-fixed", 1, "Alice", 1200, "session-token")
+        AuthResponse("login-fixed", 1, "Alice", 1200, "session-token", 20.0)
     )
     config = encode_config_accepted("join-fixed", STANDARD_GAME_CONFIG)
     state = encode_state(_snapshot())

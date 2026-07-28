@@ -8,6 +8,7 @@ from boardio.board_factory import STANDARD_GAME_CONFIG
 from networking.protocols.game import decode_event, parse_command_response
 from client.network_client import (
     AuthenticationRejectedError,
+    ConnectionState,
     MatchmakingTimeoutError,
     NetworkClient,
 )
@@ -282,3 +283,112 @@ def test_network_client_rejects_invalid_match_timeout():
             PASSWORD,
             match_timeout=0,
         )
+
+
+def test_network_client_reconnects_same_session_after_socket_drop(auth_service):
+    async def scenario():
+        registry = GameRegistry()
+        server = GameServer(
+            port=0,
+            registry=registry,
+            auth_service=auth_service,
+            reconnect_grace_period_seconds=1.0,
+        )
+        await server.start()
+        client = opponent = None
+        try:
+            client, opponent = await _start_pair(server)
+            game_id = client.initial_state.game_id
+            match = registry.get(game_id)
+            original = next(
+                context
+                for context in match.connections()
+                if context.session_token == client.session_token
+            )
+            original_connection_id = original.connection_id
+            original_thread = client._thread
+
+            await original.websocket.close(code=1011, reason="test-drop")
+
+            deadline = asyncio.get_running_loop().time() + 2.0
+            restored = None
+            while restored is None:
+                restored = next(
+                    (
+                        context
+                        for context in match.connections()
+                        if (
+                            context.session_token == client.session_token
+                            and context.connection_id != original_connection_id
+                        )
+                    ),
+                    None,
+                )
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise TimeoutError("client did not reconnect")
+                await asyncio.sleep(0.01)
+
+            assert client._thread is original_thread
+            assert client.connection_status.state is ConnectionState.CONNECTED
+            assert restored.game_id == game_id
+            assert restored.color.value == client.initial_state.assigned_color
+            assert not match.is_paused
+
+            second_connection_id = restored.connection_id
+            await restored.websocket.close(code=1011, reason="second-test-drop")
+            deadline = asyncio.get_running_loop().time() + 2.0
+            restored_again = None
+            while restored_again is None:
+                restored_again = next(
+                    (
+                        context
+                        for context in match.connections()
+                        if (
+                            context.session_token == client.session_token
+                            and context.connection_id != second_connection_id
+                        )
+                    ),
+                    None,
+                )
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise TimeoutError("client did not reconnect a second time")
+                await asyncio.sleep(0.01)
+
+            assert client._thread is original_thread
+            assert client.connection_status.state is ConnectionState.CONNECTED
+            assert not match.is_paused
+        finally:
+            await _close_clients(client, opponent)
+            await server.close()
+
+    asyncio.run(scenario())
+
+
+def test_network_client_reports_terminal_failure_after_grace_expires(
+    auth_service,
+):
+    async def scenario():
+        server = GameServer(
+            port=0,
+            auth_service=auth_service,
+            reconnect_grace_period_seconds=0.15,
+        )
+        await server.start()
+        client = opponent = None
+        try:
+            client, opponent = await _start_pair(server)
+            await server.close()
+
+            deadline = asyncio.get_running_loop().time() + 2.0
+            while client.connection_status.state is not ConnectionState.FAILED:
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise TimeoutError("client did not report reconnect failure")
+                await asyncio.sleep(0.01)
+
+            assert not client.is_connected
+            assert client.failure is not None
+        finally:
+            await _close_clients(client, opponent)
+            await server.close()
+
+    asyncio.run(scenario())

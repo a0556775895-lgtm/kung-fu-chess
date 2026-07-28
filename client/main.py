@@ -4,10 +4,18 @@ import argparse
 import logging
 
 from client.cli_auth import AuthAction, AuthCredentials, prompt_credentials
-from client.network_client import AuthenticationRejectedError, NetworkClient
+from client.network_client import (
+    AuthenticationRejectedError,
+    ConnectionState,
+    NetworkClient,
+)
 from client.network_event_adapter import NetworkEventAdapter
 from client.remote_game_engine_proxy import RemoteGameEngineProxy
 from view.display_manager import DisplayManager
+from view.hud.connection_status.connection_status_renderer import (
+    ConnectionNotice,
+    ConnectionStatusRenderer,
+)
 
 
 DEFAULT_SERVER_URI = "ws://127.0.0.1:8765"
@@ -35,8 +43,24 @@ def run_client(
             proxy.process_network_messages()
             for event in proxy.drain_events():
                 event_adapter.publish(event)
-            if not network_client.is_connected:
-                raise ConnectionError("server_connection_closed") from network_client.failure
+
+        def connection_notice():
+            """Combine local transport and opponent lifecycle into one overlay."""
+            status = network_client.connection_status
+            if status.state is ConnectionState.RECONNECTING:
+                return ConnectionNotice(
+                    "Reconnecting...",
+                    status.seconds_remaining,
+                )
+            if status.state is ConnectionState.FAILED:
+                return ConnectionNotice("Reconnect failed")
+            opponent_seconds = proxy.opponent_reconnect_seconds
+            if opponent_seconds is not None:
+                return ConnectionNotice(
+                    "Opponent disconnected",
+                    opponent_seconds,
+                )
+            return None
 
         display = DisplayManager(
             proxy.board,
@@ -44,6 +68,9 @@ def run_client(
             game_updater=update_remote_game,
             event_source=event_adapter,
             starts_game=False,
+            extra_renderers=(
+                ConnectionStatusRenderer(connection_notice),
+            ),
         )
         display.run()
     finally:

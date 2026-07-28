@@ -144,6 +144,7 @@ def test_game_server_accepts_real_websocket_join(auth_service):
                     "Bob",
                     1200,
                     auth_response.session_token,
+                    20.0,
                 )
                 assert config_response.was_overridden is False
                 assert state.assigned_color == "w"

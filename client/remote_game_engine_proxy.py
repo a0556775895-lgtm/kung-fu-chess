@@ -1,6 +1,8 @@
 """Client-side adapter from the existing engine-shaped API to wire messages."""
 
 from dataclasses import replace
+import math
+import time
 import uuid
 
 from engine.snapshot import GameSnapshot
@@ -40,6 +42,7 @@ class RemoteGameEngineProxy:
         self._last_sequence = initial_state.sequence
         self._responses = {}
         self._events = []
+        self._opponent_reconnect_deadline = None
 
     @property
     def board(self) -> SnapshotBoardView:
@@ -51,12 +54,24 @@ class RemoteGameEngineProxy:
         """Return the player side assigned by the authoritative server."""
         return self._assigned_color
 
+    @property
+    def opponent_reconnect_seconds(self) -> int | None:
+        """Return the local countdown for a server-reported opponent disconnect."""
+        if self._opponent_reconnect_deadline is None:
+            return None
+        return max(
+            0,
+            math.ceil(self._opponent_reconnect_deadline - time.monotonic()),
+        )
+
     def snapshot(self, selected_cell: Position | None = None) -> GameSnapshot:
         """Return the newest server state with local-only selection metadata."""
         return replace(self._board.snapshot, selected_cell=selected_cell)
 
     def request_move(self, source: Position, destination: Position) -> str | None:
         """Queue MOVE for an owned source piece and return its request id."""
+        if not self._network_client.is_connected:
+            return None
         piece = self._owned_piece_at(source)
         if piece is None:
             return None
@@ -76,6 +91,8 @@ class RemoteGameEngineProxy:
 
     def request_jump(self, source: Position) -> str | None:
         """Queue JUMP for an owned source piece and return its request id."""
+        if not self._network_client.is_connected:
+            return None
         piece = self._owned_piece_at(source)
         if piece is None:
             return None
@@ -125,6 +142,7 @@ class RemoteGameEngineProxy:
         if message.startswith("EVENT "):
             event = decode_event(message)
             if self._accept_ordered(event.get("game_id"), event.get("sequence")):
+                self._track_connection_lifecycle(event)
                 self._events.append(event)
             return
 
@@ -134,6 +152,25 @@ class RemoteGameEngineProxy:
             return
 
         raise ProtocolError("UNEXPECTED_SERVER_MESSAGE")
+
+    def _track_connection_lifecycle(self, event: dict) -> None:
+        """Track only opponent lifecycle events needed by the graphical overlay."""
+        event_type = event.get("type")
+        color = event.get("color")
+        if color == self._assigned_color:
+            return
+        if event_type == "PLAYER_DISCONNECTED":
+            grace = event.get("grace_period_seconds")
+            if (
+                isinstance(grace, bool)
+                or not isinstance(grace, (int, float))
+                or not math.isfinite(grace)
+                or grace < 0
+            ):
+                raise ProtocolError("INVALID_RECONNECT_GRACE_PERIOD")
+            self._opponent_reconnect_deadline = time.monotonic() + grace
+        elif event_type in {"PLAYER_RECONNECTED", "GAME_OVER"}:
+            self._opponent_reconnect_deadline = None
 
     def _accept_ordered(self, game_id, sequence) -> bool:
         if game_id != self._game_id:

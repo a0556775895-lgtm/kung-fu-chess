@@ -2,6 +2,7 @@
 """מגדיר כיצד הודעות אימות עוברות ברשת, ומספק פונקציות קידוד ופענוח"""
 from dataclasses import dataclass, field
 import json
+import math
 from typing import TypeAlias
 
 from networking.protocols._validation import (
@@ -47,6 +48,7 @@ class AuthResponse:
     username: str
     rating: int
     session_token: str = field(repr=False)
+    reconnect_grace_seconds: float
 
 
 def encode_register(request: RegisterRequest) -> str:
@@ -91,6 +93,7 @@ def encode_auth_ok(response: AuthResponse) -> str:
     _validate_response(response)
     payload = {
         "rating": response.rating,
+        "reconnect_grace_seconds": response.reconnect_grace_seconds,
         "session_token": response.session_token,
         "user_id": response.user_id,
         "username": response.username,
@@ -109,7 +112,13 @@ def parse_auth_response(message: str) -> AuthResponse:
     _, request_id, payload_text = parts
     _validate_request_id(request_id)
     payload = _decode_object(payload_text, "MALFORMED_AUTH_RESPONSE")
-    if set(payload) != {"user_id", "username", "rating", "session_token"}:
+    if set(payload) != {
+        "user_id",
+        "username",
+        "rating",
+        "session_token",
+        "reconnect_grace_seconds",
+    }:
         raise AuthProtocolError("MALFORMED_AUTH_RESPONSE")
 
     response = AuthResponse(
@@ -118,6 +127,7 @@ def parse_auth_response(message: str) -> AuthResponse:
         username=payload["username"],
         rating=payload["rating"],
         session_token=payload["session_token"],
+        reconnect_grace_seconds=payload["reconnect_grace_seconds"],
     )
     _validate_response(response)
     return response
@@ -161,6 +171,13 @@ def _validate_response(response: AuthResponse) -> None:
         raise AuthProtocolError("INVALID_RATING")
     if not is_valid_session_token(response.session_token):
         raise AuthProtocolError("INVALID_SESSION_TOKEN")
+    if (
+        isinstance(response.reconnect_grace_seconds, bool)
+        or not isinstance(response.reconnect_grace_seconds, (int, float))
+        or not math.isfinite(response.reconnect_grace_seconds)
+        or response.reconnect_grace_seconds < 0
+    ):
+        raise AuthProtocolError("INVALID_RECONNECT_GRACE_PERIOD")
 
 
 def _validate_request_id(request_id: str) -> None:

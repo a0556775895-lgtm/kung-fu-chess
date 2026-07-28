@@ -4,6 +4,7 @@ import pytest
 
 import client.main as client_main
 from client.cli_auth import AuthAction, AuthCredentials
+from client.network_client import ConnectionState, ConnectionStatus
 
 
 class _FakeNetworkClient:
@@ -17,6 +18,7 @@ class _FakeNetworkClient:
         self.started = False
         self.closed = False
         self.is_connected = True
+        self.connection_status = ConnectionStatus(ConnectionState.CONNECTED)
         self.failure = None
         self.instances.append(self)
 
@@ -32,6 +34,7 @@ class _FakeProxy:
         self.network_client = network_client
         self.board = object()
         self.processed = 0
+        self.opponent_reconnect_seconds = None
 
     def process_network_messages(self):
         self.processed += 1

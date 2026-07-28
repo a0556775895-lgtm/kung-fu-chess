@@ -19,6 +19,7 @@ from networking.protocols.game import (
 class _FakeNetworkClient:
     def __init__(self, initial_state):
         self.initial_state = initial_state
+        self.is_connected = True
         self.sent = []
         self.incoming = []
 
@@ -109,6 +110,85 @@ def test_proxy_does_not_send_empty_or_opponent_source():
     assert proxy.request_move(Position(4, 4), Position(3, 4)) is None
     assert proxy.request_jump(Position(1, 4)) is None
     assert network.sent == []
+
+
+def test_proxy_blocks_commands_while_network_is_reconnecting():
+    network = _FakeNetworkClient(_snapshot())
+    network.is_connected = False
+    proxy = RemoteGameEngineProxy(network)
+
+    assert proxy.request_move(Position(6, 4), Position(5, 4)) is None
+    assert proxy.request_jump(Position(6, 4)) is None
+    assert network.sent == []
+
+
+def test_proxy_tracks_opponent_disconnect_and_reconnect(monkeypatch):
+    times = iter((100.0, 103.2))
+    monkeypatch.setattr(
+        "client.remote_game_engine_proxy.time.monotonic",
+        lambda: next(times),
+    )
+    network = _FakeNetworkClient(_snapshot())
+    proxy = RemoteGameEngineProxy(network)
+    network.incoming = [
+        encode_event({
+            "type": "PLAYER_DISCONNECTED",
+            "game_id": "default",
+            "sequence": 2,
+            "color": "b",
+            "grace_period_seconds": 20.0,
+        }),
+    ]
+
+    proxy.process_network_messages()
+    assert proxy.opponent_reconnect_seconds == 17
+
+    network.incoming = [
+        encode_event({
+            "type": "PLAYER_RECONNECTED",
+            "game_id": "default",
+            "sequence": 3,
+            "color": "b",
+        }),
+    ]
+    proxy.process_network_messages()
+    assert proxy.opponent_reconnect_seconds is None
+
+
+def test_proxy_ignores_own_disconnect_event():
+    network = _FakeNetworkClient(_snapshot())
+    proxy = RemoteGameEngineProxy(network)
+    network.incoming = [
+        encode_event({
+            "type": "PLAYER_DISCONNECTED",
+            "game_id": "default",
+            "sequence": 2,
+            "color": "w",
+            "grace_period_seconds": 20.0,
+        }),
+    ]
+
+    proxy.process_network_messages()
+
+    assert proxy.opponent_reconnect_seconds is None
+
+
+@pytest.mark.parametrize("grace", [True, "20", float("nan"), -1])
+def test_proxy_rejects_invalid_disconnect_grace(grace):
+    network = _FakeNetworkClient(_snapshot())
+    proxy = RemoteGameEngineProxy(network)
+    network.incoming = [
+        encode_event({
+            "type": "PLAYER_DISCONNECTED",
+            "game_id": "default",
+            "sequence": 2,
+            "color": "b",
+            "grace_period_seconds": grace,
+        }),
+    ]
+
+    with pytest.raises(ProtocolError, match="INVALID_RECONNECT_GRACE_PERIOD"):
+        proxy.process_network_messages()
 
 
 def test_proxy_does_not_expose_presentation_event_bus():

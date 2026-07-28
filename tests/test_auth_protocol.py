@@ -28,7 +28,14 @@ def test_login_round_trip_preserves_password_control_characters():
 
 
 def test_auth_ok_round_trip_contains_only_public_account_data():
-    response = AuthResponse("login-2", 17, "Alice", 1200, "session-token")
+    response = AuthResponse(
+        "login-2",
+        17,
+        "Alice",
+        1200,
+        "session-token",
+        20.0,
+    )
 
     encoded = encode_auth_ok(response)
 
@@ -71,9 +78,11 @@ def test_parse_auth_request_rejects_malformed_values(message, reason):
         "AUTH_OK request-1",
         "AUTH_OK request-1 []",
         'AUTH_OK request-1 {"user_id":1,"username":"Alice"}',
-        'AUTH_OK request-1 {"user_id":true,"username":"Alice","rating":1200,"session_token":"token"}',
-        'AUTH_OK request-1 {"user_id":1,"username":"Alice","rating":-1,"session_token":"token"}',
-        'AUTH_OK request-1 {"user_id":1,"username":"Alice","rating":1200,"session_token":""}',
+        'AUTH_OK request-1 {"user_id":true,"username":"Alice","rating":1200,"session_token":"token","reconnect_grace_seconds":20}',
+        'AUTH_OK request-1 {"user_id":1,"username":"Alice","rating":-1,"session_token":"token","reconnect_grace_seconds":20}',
+        'AUTH_OK request-1 {"user_id":1,"username":"Alice","rating":1200,"session_token":"","reconnect_grace_seconds":20}',
+        'AUTH_OK request-1 {"user_id":1,"username":"Alice","rating":1200,"session_token":"token","reconnect_grace_seconds":-1}',
+        'AUTH_OK request-1 {"user_id":1,"username":"Alice","rating":1200,"session_token":"token","reconnect_grace_seconds":NaN}',
     ],
 )
 def test_parse_auth_response_rejects_malformed_values(message):
