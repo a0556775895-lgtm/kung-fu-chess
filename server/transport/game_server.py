@@ -14,13 +14,12 @@ from networking.protocols.auth import (
 )
 from networking.protocols.game import ProtocolError, encode_error, parse_join
 from server import config
-from server.game.admission import GameAdmission
+from server.game.admission import AdmissionPlayer, GameAdmission
 from server.game.controller import GameController
 from server.game.game_registry import GameRegistry
 from server.game.tick_loop import run_tick_loop
 from server.services.matchmaker import (
     Matchmaker,
-    MatchmakingPlayer,
     MatchmakingTimeoutError,
 )
 from server.services.reconnect import ReconnectError, ReconnectService
@@ -225,7 +224,7 @@ class GameServer:
                 await connection.close(code=1008, reason="join_rejected")
                 return
 
-            player = MatchmakingPlayer(
+            player = AdmissionPlayer(
                 session=session,
                 request=join_request,
                 websocket=connection,
@@ -258,7 +257,7 @@ class GameServer:
     async def _wait_for_match(
         self,
         connection: ServerConnection,
-        player: MatchmakingPlayer,
+        player: AdmissionPlayer,
     ):
         """Wait for pairing while removing a client that disconnects in queue."""
         match_task = asyncio.create_task(

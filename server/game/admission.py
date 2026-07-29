@@ -13,8 +13,17 @@ from networking.protocols.game import (
     encode_error,
 )
 from server.game.match import Match
-from server.services.matchmaker import MatchmakingPlayer
+from server.services.session_registry import ActiveSession, SessionState
 from server.transport.connection import ConnectionContext, ConnectionRole
+
+
+@dataclass(frozen=True, slots=True)
+class AdmissionPlayer:
+    """Authenticated player data required to create or restore a game seat."""
+
+    session: ActiveSession
+    request: JoinRequest
+    websocket: object = None
 
 
 @dataclass(frozen=True)
@@ -60,8 +69,8 @@ class GameAdmission:
 
     def admit_pair(
         self,
-        first: MatchmakingPlayer,
-        second: MatchmakingPlayer,
+        first: AdmissionPlayer,
+        second: AdmissionPlayer,
     ) -> dict[str, AdmissionResult]:
         """Create exactly one Match and return each session's personalized result."""
         if first.session.token == second.session.token:
@@ -97,8 +106,10 @@ class GameAdmission:
         match.add_connection(second_context)
         first.session.game_id = game_id
         first.session.color = PieceColor.WHITE
+        first.session.state = SessionState.IN_GAME
         second.session.game_id = game_id
         second.session.color = PieceColor.BLACK
+        second.session.state = SessionState.IN_GAME
 
         self._enqueue_config(first_context, first.request, match)
         self._enqueue_config(second_context, second.request, match)
@@ -125,7 +136,7 @@ class GameAdmission:
     ) -> AdmissionResult:
         """Attach a new connection to one persistent authenticated player seat."""
         match = self._registry.get(session.game_id)
-        player = MatchmakingPlayer(
+        player = AdmissionPlayer(
             session=session,
             request=request,
             websocket=websocket,
@@ -138,7 +149,7 @@ class GameAdmission:
 
     def _create_context(
         self,
-        player: MatchmakingPlayer,
+        player: AdmissionPlayer,
         match: Match,
         color: PieceColor,
     ) -> ConnectionContext:

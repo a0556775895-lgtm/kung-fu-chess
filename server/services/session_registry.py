@@ -1,10 +1,21 @@
 """In-memory ownership of authenticated sessions currently connected."""
 """אוביקט שמיצג משתמש מאומת פעיל"""
 from dataclasses import dataclass, field
+from enum import Enum
 import secrets
 import unicodedata
 
 from model.piece import PieceColor
+
+
+class SessionState(str, Enum):
+    """Exclusive server-side activity owned by one authenticated session."""
+
+    LOBBY = "LOBBY"
+    QUEUED = "QUEUED"
+    WAITING_IN_ROOM = "WAITING_IN_ROOM"
+    IN_GAME = "IN_GAME"
+    SPECTATING = "SPECTATING"
 
 
 @dataclass(slots=True)
@@ -18,6 +29,7 @@ class ActiveSession:
     game_id: str | None = None
     color: PieceColor | None = None
     is_connected: bool = True
+    state: SessionState = SessionState.LOBBY
 
 
 class SessionRegistry:

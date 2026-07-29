@@ -3,7 +3,7 @@
 import pytest
 
 from model.piece import PieceColor
-from server.services.session_registry import SessionRegistry
+from server.services.session_registry import SessionRegistry, SessionState
 
 
 def _registry(*tokens):
@@ -22,6 +22,7 @@ def test_create_preserves_identity_and_blocks_case_variant():
     assert session.is_connected
     assert session.game_id is None
     assert session.color is None
+    assert session.state is SessionState.LOBBY
     assert registry.get("token-1") is session
     assert registry.create(8, "alice", 1300) is None
     assert registry.is_active("ALICE")

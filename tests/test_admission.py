@@ -10,10 +10,9 @@ from networking.protocols.game import (
     parse_config_response,
 )
 from server.game import admission as admission_module
-from server.game.admission import GameAdmission
+from server.game.admission import AdmissionPlayer, GameAdmission
 from server.game.game_registry import GameRegistry
-from server.services.matchmaker import MatchmakingPlayer
-from server.services.session_registry import ActiveSession
+from server.services.session_registry import ActiveSession, SessionState
 
 
 def _admission_with_predictable_ids():
@@ -34,7 +33,7 @@ def _admission_with_predictable_ids():
 
 
 def _player(token, user_id, username, request_id, config=STANDARD_GAME_CONFIG):
-    return MatchmakingPlayer(
+    return AdmissionPlayer(
         ActiveSession(token, user_id, username, 1200),
         JoinRequest(request_id, token, config),
     )
@@ -66,6 +65,8 @@ def test_admit_pair_creates_unique_match_colors_and_personalized_state():
     assert white.session.game_id == black.session.game_id == "game-1"
     assert white.session.color is PieceColor.WHITE
     assert black.session.color is PieceColor.BLACK
+    assert white.session.state is SessionState.IN_GAME
+    assert black.session.state is SessionState.IN_GAME
 
     white_config, white_state_message = _drain(white_result.context)
     black_config, black_state_message = _drain(black_result.context)

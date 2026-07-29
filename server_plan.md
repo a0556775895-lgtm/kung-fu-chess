@@ -281,9 +281,10 @@ NetworkClient מקבל                                                    Networ
 - שעון המשחק ימשיך להתקדם בזמן ניתוק. אם חלון החסד פג, סיום המשחק יעבור דרך `Match.finish()` הקיים ולא דרך `GameEngine.resign()` חדש.
 
 ### שלב F — חדרים + צופים + לוגים (שקף 7)
-- `client/room_dialog.py`: חלון Tkinter (Entry + Create/Join/Cancel), רץ ומסתיים **לפני** פתיחת ה-OpenCV.
-- `server/services/rooms.py`: `create_room()` (מזהה קצר) → יוצר=White, **יוצר `Match` חדש ב-`game_registry`**; `join_room(id, player)` → שני=Black, כל הבא=צופה (חסום מ-MOVE/JUMP, מקבל STATE/EVENT של אותו `game_id`).
-- השרת מנהל מצב משתמש מפורש (`OFFLINE`/`LOBBY`/`QUEUED`/`IN_GAME`/`SPECTATING`) כדי למנוע כניסה כפולה לתור, התאמה לשני משחקים או משחק וצפייה במקביל.
+- **F1 — תשתית חדרים: הושלם ואושר.** נוסף מודל `Room` שמחזיק קוד, יוצרת, `GameConfig` והפניה אופציונלית לאותו `Match`; ‏`RoomStatus` נגזר ממצב החדר והמשחק. `RoomRegistry` מספק מיפוי בזיכרון לפי קוד. `SessionState` מונע פעילות כפולה בין `LOBBY`, ‏`QUEUED`, ‏`WAITING_IN_ROOM`, ‏`IN_GAME` ו-`SPECTATING`. ‏`AdmissionPlayer` הופרד מה-Matchmaker, וחיפוש ה-ELO נשאר חיפוש בדליי דירוג מוגבלים וברורים. כל 463 בדיקות הפרויקט עוברות וכיסוי הלוגיקה הנמדדת נשאר 100%.
+- **F2 — מתוכנן, טרם בוצע:** פרוטוקול חדרים ו-`RoomService` עבור Create/Join/Cancel. יצירת חדר תשאיר את היוצרת בהמתנה; רק הצטרפות השחקנית השנייה תיצור `Match` ותעביר את שתיהן ל-`IN_GAME`.
+- ממשק החדרים יוצג דרך החלון הגרפי הקיים/חלון Windows, **ללא Tkinter**, לאחר שמימוש השרת והפרוטוקול יאושר.
+- בהמשך, כל מצטרפת לאחר שתי השחקניות תוגדר כצופה: חסומה מ-MOVE/JUMP ומקבלת STATE/EVENT של אותו `game_id`.
 - מזהה חדר "בראש המסך": `view/hud/room_banner/` — בנר בתוך קנבס ה-OpenCV.
 - לוגים: `server/main.py`→`server.log`; `client/main.py`→`client_<username>.log` (נקבע אחרי login, כדי ששני לקוחות מקומיים לא ידרסו קובץ זה של זה).
 - בנוסף, לכל `Match` ייכתב לוג פעילות מתחלף משלו (`logs/games/game_<game_id>.log`) עם `game_id`, ‏`request_id`, ‏`user_id`, סוג אירוע וזמן שרת. ה-handler נסגר עם ניקוי המשחק ונקבעת מדיניות rotation/retention כדי למנוע גדילה בלתי מוגבלת.
@@ -361,7 +362,7 @@ NetworkClient מקבל                                                    Networ
 | C — Username Login | הושלם ואושר — C1–C3 | login בשם משתמש, הקצאת White/Black, הצגת שמות בלוח והודעת `server_full` מאומתים מקצה לקצה |
 | D — Auth + SQLite + ELO | הושלם ואושר — D1–D6 | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
 | E — Matchmaking + Disconnect | הושלם ואושר — E1–E4 | Session tokens, שידוך לפי דירוג, השהיית משחק בזמן ניתוק, הפסד `DISCONNECT`, reconnect אוטומטי באותו משחק ותצוגת countdown לשתי השחקניות מומשו ונבדקו. הלקוחה חוזרת עם `JOIN` וה־token הקיים, ללא פקודת reconnect נפרדת וללא יצירת חלון או Proxy חדשים |
-| F — Rooms + Spectators + Logs | ממתין | Create/Join/Cancel; שני שחקנים וצופים עם הרשאות נכונות; שני חדרים מבודדים; לוגי שרת/לקוח/משחק נוצרים ונסגרים כראוי |
+| F — Rooms + Spectators + Logs | בתהליך — F1 הושלם ואושר | תשתית `Room`/`RoomRegistry` ומצבי session הושלמה עם 463 בדיקות ו-100% כיסוי; נותרו Create/Join/Cancel, ממשק Windows ללא Tkinter, צופים ולוגים |
 
 ## 13. קריטריוני Release סופיים
 

@@ -6,19 +6,20 @@ import pytest
 
 from boardio.board_factory import STANDARD_GAME_CONFIG
 from networking.protocols.game import JoinRequest
+from server.game.admission import AdmissionPlayer
 from server.services.matchmaker import (
     AlreadyQueuedError,
     Matchmaker,
-    MatchmakingPlayer,
     MatchmakingTimeoutError,
+    SessionNotAvailableError,
 )
-from server.services.session_registry import ActiveSession
+from server.services.session_registry import ActiveSession, SessionState
 
 
 def _player(token, rating):
     user_id = sum(ord(character) for character in token)
     session = ActiveSession(token, user_id, token, rating)
-    return MatchmakingPlayer(
+    return AdmissionPlayer(
         session,
         JoinRequest(f"join-{token}", token, STANDARD_GAME_CONFIG),
     )
@@ -62,6 +63,30 @@ def test_matchmaker_chooses_closest_rating_without_scanning_players():
         with pytest.raises(asyncio.CancelledError):
             await far
         assert matchmaker.waiting_count == 0
+
+    asyncio.run(scenario())
+
+
+def test_matchmaker_tracks_exclusive_session_states():
+    async def scenario():
+        matchmaker = Matchmaker(
+            _result_factory([]),
+            rating_range=100,
+            timeout_seconds=1,
+        )
+        waiting_player = _player("waiting", 1200)
+        waiting = await _queue(matchmaker, waiting_player)
+        assert waiting_player.session.state is SessionState.QUEUED
+
+        waiting.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiting
+        assert waiting_player.session.state is SessionState.LOBBY
+
+        unavailable = _player("room", 1200)
+        unavailable.session.state = SessionState.WAITING_IN_ROOM
+        with pytest.raises(SessionNotAvailableError):
+            await matchmaker.find_or_wait(unavailable)
 
     asyncio.run(scenario())
 

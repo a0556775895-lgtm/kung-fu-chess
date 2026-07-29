@@ -5,8 +5,8 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from itertools import count
 
-from networking.protocols.game import JoinRequest
-from server.services.session_registry import ActiveSession
+from server.game.admission import AdmissionPlayer
+from server.services.session_registry import SessionState
 
 
 class MatchmakingTimeoutError(TimeoutError):
@@ -17,18 +17,13 @@ class AlreadyQueuedError(ValueError):
     """The same authenticated session tried to enter the queue twice."""
 
 
-@dataclass(frozen=True, slots=True)
-class MatchmakingPlayer:
-    """Everything needed to turn one queued session into a live connection."""
-
-    session: ActiveSession
-    request: JoinRequest
-    websocket: object = None
+class SessionNotAvailableError(ValueError):
+    """A session already owns another mutually exclusive activity."""
 
 
 @dataclass(slots=True)
 class _WaitingEntry:
-    player: MatchmakingPlayer
+    player: AdmissionPlayer
     future: asyncio.Future
     sequence: int
 
@@ -66,7 +61,7 @@ class Matchmaker:
         self._sequence = count()
         self._lock = asyncio.Lock()
 
-    async def find_or_wait(self, player: MatchmakingPlayer):
+    async def find_or_wait(self, player: AdmissionPlayer):
         """Return this player's admission after pairing, or raise on timeout."""
         token = player.session.token
         loop = asyncio.get_running_loop()
@@ -75,6 +70,8 @@ class Matchmaker:
         async with self._lock:
             if token in self._rating_by_token:
                 raise AlreadyQueuedError(token)
+            if player.session.state is not SessionState.LOBBY:
+                raise SessionNotAvailableError(player.session.state.value)
 
             opponent = self._find_candidate(player.session.rating)
             if opponent is not None:
@@ -84,6 +81,8 @@ class Matchmaker:
                     opponent_result = results[opponent.player.session.token]
                     player_result = results[token]
                 except BaseException as exc:
+                    opponent.player.session.state = SessionState.LOBBY
+                    player.session.state = SessionState.LOBBY
                     opponent.future.set_exception(exc)
                     raise
                 opponent.future.set_result(opponent_result)
@@ -96,6 +95,7 @@ class Matchmaker:
             )
             bucket[token] = entry
             self._rating_by_token[token] = player.session.rating
+            player.session.state = SessionState.QUEUED
 
         try:
             return await asyncio.wait_for(
@@ -107,22 +107,25 @@ class Matchmaker:
                 if future.done():
                     return future.result()
                 self._remove(token)
+                player.session.state = SessionState.LOBBY
             raise MatchmakingTimeoutError(token) from exc
         except asyncio.CancelledError:
             async with self._lock:
                 if token in self._rating_by_token:
                     self._remove(token)
+                    player.session.state = SessionState.LOBBY
             raise
 
     def _find_candidate(self, rating: int) -> _WaitingEntry | None:
         """Choose closest rating, then oldest arrival, from bucket heads only."""
-        for distance in range(self._rating_range + 1):
+        exact_bucket = self._waiting_by_rating.get(rating)
+        if exact_bucket:
+            return next(iter(exact_bucket.values()))
+
+        for distance in range(1, self._rating_range + 1):
             candidates = []
-            lower = rating - distance
-            upper = rating + distance
-            for candidate_rating in (
-                (lower,) if lower == upper else (lower, upper)
-            ):
+            for direction in (-1, 1):
+                candidate_rating = rating + direction * distance
                 bucket = self._waiting_by_rating.get(candidate_rating)
                 if bucket:
                     candidates.append(next(iter(bucket.values())))
