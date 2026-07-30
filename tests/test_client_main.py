@@ -15,15 +15,15 @@ class _FakeNetworkClient:
         self.username = username
         self.password = password
         self.register = register
-        self.started = False
+        self.authenticated = False
         self.closed = False
         self.is_connected = True
         self.connection_status = ConnectionStatus(ConnectionState.CONNECTED)
         self.failure = None
         self.instances.append(self)
 
-    def start(self):
-        self.started = True
+    def authenticate(self):
+        self.authenticated = True
 
     def close(self):
         self.closed = True
@@ -43,6 +43,16 @@ class _FakeProxy:
         return []
 
 
+class _FakeLobbyDisplay:
+    game_ready = True
+
+    def __init__(self, controller):
+        self.controller = controller
+
+    def run(self):
+        return self.game_ready
+
+
 def test_run_client_composes_remote_display_and_closes_network(monkeypatch):
     captured = {}
 
@@ -55,6 +65,7 @@ def test_run_client_composes_remote_display_and_closes_network(monkeypatch):
 
     _FakeNetworkClient.instances = []
     monkeypatch.setattr(client_main, "NetworkClient", _FakeNetworkClient)
+    monkeypatch.setattr(client_main, "LobbyDisplay", _FakeLobbyDisplay)
     monkeypatch.setattr(client_main, "RemoteGameEngineProxy", _FakeProxy)
     monkeypatch.setattr(client_main, "DisplayManager", FakeDisplay)
 
@@ -70,7 +81,7 @@ def test_run_client_composes_remote_display_and_closes_network(monkeypatch):
     assert network.username == "Alice"
     assert network.password == "correct horse battery"
     assert network.register is True
-    assert network.started and network.closed
+    assert network.authenticated and network.closed
     assert captured["proxy"].processed == 1
     assert captured["options"]["event_source"] is not captured["proxy"]
     assert captured["options"]["starts_game"] is False
@@ -86,6 +97,7 @@ def test_run_client_closes_network_when_display_fails(monkeypatch):
 
     _FakeNetworkClient.instances = []
     monkeypatch.setattr(client_main, "NetworkClient", _FakeNetworkClient)
+    monkeypatch.setattr(client_main, "LobbyDisplay", _FakeLobbyDisplay)
     monkeypatch.setattr(client_main, "RemoteGameEngineProxy", _FakeProxy)
     monkeypatch.setattr(client_main, "DisplayManager", FailingDisplay)
 
@@ -99,6 +111,26 @@ def test_run_client_closes_network_when_display_fails(monkeypatch):
         )
 
     assert _FakeNetworkClient.instances[0].closed
+
+
+def test_run_client_closes_network_when_lobby_exits(monkeypatch):
+    class ExitingLobby(_FakeLobbyDisplay):
+        game_ready = False
+
+    _FakeNetworkClient.instances = []
+    monkeypatch.setattr(client_main, "NetworkClient", _FakeNetworkClient)
+    monkeypatch.setattr(client_main, "LobbyDisplay", ExitingLobby)
+
+    client_main.run_client(
+        AuthCredentials(
+            AuthAction.LOGIN,
+            "Alice",
+            "correct horse battery",
+        )
+    )
+
+    network = _FakeNetworkClient.instances[0]
+    assert network.authenticated and network.closed
 
 
 def test_main_prompts_for_credentials_before_running_client(monkeypatch):

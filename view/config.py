@@ -10,6 +10,17 @@ WINDOW_SIZE = (480, 480)
 FRAME_DELAY_MS = 30
 MAX_DT_MS = 100
 
+# Pre-game lobby artwork uses a 3:2 window derived from 1536x1024 assets.
+LOBBY_WINDOW_SIZE = (960, 640)
+LOBBY_ANIMATION_FRAME_MS = 350
+WELCOME_IMAGE_PATH = Path("view") / "asset" / "welcome_page.png"
+LOBBY_MENU_IMAGE_PATH = Path("view") / "asset" / "menu.png"
+JOIN_ROOM_IMAGE_PATH = Path("view") / "asset" / "join_room_menu.png"
+ROOM_CREATED_IMAGE_PATH = (
+    Path("view") / "asset" / "room_created_messege.png"
+)
+WAITING_ANIMATION_ROOT = Path("view") / "asset" / "waiting_animation"
+
 ASSETS_ROOT = Path("view") / "asset" / "pieces"
 BOARD_IMAGE_PATH = Path("view") / "asset" / "board.png"
 BACKGROUND_IMAGE_PATH = Path("view") / "asset" / "background.png"

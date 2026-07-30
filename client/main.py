@@ -4,6 +4,7 @@ import argparse
 import logging
 
 from client.cli_auth import AuthAction, AuthCredentials, prompt_credentials
+from client.lobby_controller import LobbyController
 from client.network_client import (
     AuthenticationRejectedError,
     ConnectionState,
@@ -12,6 +13,7 @@ from client.network_client import (
 from client.network_event_adapter import NetworkEventAdapter
 from client.remote_game_engine_proxy import RemoteGameEngineProxy
 from view.display_manager import DisplayManager
+from view.lobby.lobby_display import LobbyDisplay
 from view.hud.connection_status.connection_status_renderer import (
     ConnectionNotice,
     ConnectionStatusRenderer,
@@ -33,8 +35,12 @@ def run_client(
         credentials.password,
         register=credentials.action is AuthAction.REGISTER,
     )
-    network_client.start()
+    network_client.authenticate()
     try:
+        lobby = LobbyDisplay(LobbyController(network_client))
+        if not lobby.run():
+            return
+
         proxy = RemoteGameEngineProxy(network_client)
         event_adapter = NetworkEventAdapter()
 
