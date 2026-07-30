@@ -3,7 +3,7 @@
 import cv2
 
 from view import config
-from view.lobby.clipboard import copy_text
+from view.lobby.clipboard import copy_text, read_text
 from view.lobby.lobby_layout import action_at
 from view.lobby.lobby_renderer import LobbyRenderer
 from view.lobby.lobby_state import LobbyAction, LobbyScreen
@@ -15,10 +15,17 @@ WINDOW_NAME = "KungFu Chess"
 class LobbyDisplay:
     """Translate mouse and keyboard input into semantic controller actions."""
 
-    def __init__(self, controller, renderer=None, clipboard_writer=None):
+    def __init__(
+        self,
+        controller,
+        renderer=None,
+        clipboard_writer=None,
+        clipboard_reader=None,
+    ):
         self._controller = controller
         self._renderer = renderer or LobbyRenderer()
         self._clipboard_writer = clipboard_writer or copy_text
+        self._clipboard_reader = clipboard_reader or read_text
         self._width, self._height = config.LOBBY_WINDOW_SIZE
         self._window_created = False
 
@@ -77,7 +84,9 @@ class LobbyDisplay:
         key &= 0xFF
         screen = self._controller.view_state.screen
 
-        if key == 27:
+        if key == 22:  # Ctrl+V is reported as ASCII SYN by OpenCV on Windows.
+            self._controller.paste_room_code(self._clipboard_reader())
+        elif key == 27:
             if screen is LobbyScreen.JOIN_ROOM:
                 action = LobbyAction.BACK
             elif screen is LobbyScreen.WAITING_FOR_ROOM:

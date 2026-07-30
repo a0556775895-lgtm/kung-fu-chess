@@ -163,3 +163,18 @@ class LobbyController:
         if self._screen is LobbyScreen.JOIN_ROOM:
             self._room_code_input = self._room_code_input[:-1]
             self._error = None
+
+    def paste_room_code(self, text: str) -> None:
+        """Replace the editable field with one validated clipboard value."""
+        if self._screen is not LobbyScreen.JOIN_ROOM:
+            return
+        normalized = text.strip().upper() if isinstance(text, str) else ""
+        if (
+            not 4 <= len(normalized) <= 12
+            or not normalized.isascii()
+            or not normalized.isalnum()
+        ):
+            self._error = "Clipboard does not contain a valid room code"
+            return
+        self._room_code_input = normalized
+        self._error = None

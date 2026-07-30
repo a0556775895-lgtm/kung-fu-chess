@@ -123,6 +123,25 @@ def test_lobby_controller_edits_joins_and_recovers_from_room_error():
     assert controller.view_state == LobbyViewState(LobbyScreen.MENU)
 
 
+def test_lobby_controller_validates_and_replaces_pasted_room_code():
+    controller = LobbyController(_FakeLobbyNetwork())
+    controller.paste_room_code("AB12")
+    assert controller.view_state.room_code_input == ""
+
+    controller.handle_action(LobbyAction.START)
+    controller.handle_action(LobbyAction.SHOW_JOIN_ROOM)
+    controller.paste_room_code("  ab12\r\n")
+    assert controller.view_state.room_code_input == "AB12"
+    assert controller.view_state.error is None
+
+    controller.paste_room_code("not-valid!")
+    assert controller.view_state.room_code_input == "AB12"
+    assert "valid room code" in controller.view_state.error
+
+    controller.paste_room_code(None)
+    assert "valid room code" in controller.view_state.error
+
+
 def test_lobby_controller_limits_input_and_handles_failures_and_exit():
     network = _FakeLobbyNetwork()
     controller = LobbyController(network)
@@ -224,6 +243,21 @@ def test_lobby_clipboard_uses_windows_clip_without_shell(monkeypatch):
     assert captured["options"]["check"] is True
 
 
+def test_lobby_clipboard_reads_text_and_recovers_from_failure(monkeypatch):
+    monkeypatch.setattr(
+        clipboard.subprocess,
+        "run",
+        lambda *_args, **_options: SimpleNamespace(stdout="AB12\r\n"),
+    )
+    assert clipboard.read_text() == "AB12\r\n"
+
+    def fail(*_args, **_options):
+        raise OSError("clipboard unavailable")
+
+    monkeypatch.setattr(clipboard.subprocess, "run", fail)
+    assert clipboard.read_text() == ""
+
+
 def test_lobby_renderer_draws_every_screen_and_animation_frame():
     renderer = LobbyRenderer()
     expected_shape = (
@@ -296,6 +330,7 @@ class _RecordingLobbyController:
         self.exit_requested = False
         self.actions = []
         self.characters = []
+        self.pasted = []
         self.removed = 0
         self.ready = False
 
@@ -319,6 +354,9 @@ class _RecordingLobbyController:
 
     def remove_room_code_character(self):
         self.removed += 1
+
+    def paste_room_code(self, text):
+        self.pasted.append(text)
 
 
 class _FakeLobbyRenderer:
@@ -363,6 +401,7 @@ def test_lobby_display_translates_mouse_and_keyboard():
         controller,
         _FakeLobbyRenderer(),
         clipboard_writer=copied.append,
+        clipboard_reader=lambda: "CD34",
     )
 
     display._on_mouse(cv2.EVENT_RBUTTONDOWN, 480, 365, 0, None)
@@ -376,6 +415,10 @@ def test_lobby_display_translates_mouse_and_keyboard():
     controller.room_code = "AB12"
     display._on_mouse(cv2.EVENT_LBUTTONDOWN, 720, 330, 0, None)
     assert copied == ["AB12"]
+
+    controller.screen = LobbyScreen.JOIN_ROOM
+    display._handle_key(22)
+    assert controller.pasted == ["CD34"]
 
     display._handle_key(-1)
     display._handle_key(13)
