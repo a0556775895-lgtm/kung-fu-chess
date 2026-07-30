@@ -12,17 +12,37 @@ from networking.protocols.auth import (
     encode_auth_ok,
     parse_auth_request,
 )
-from networking.protocols.game import ProtocolError, encode_error, parse_join
+from networking.protocols.game import (
+    JoinRequest,
+    ProtocolError,
+    encode_error,
+    parse_join,
+)
+from networking.protocols.room import (
+    CancelRoomRequest,
+    CreateRoomRequest,
+    RoomProtocolError,
+    encode_room_cancelled,
+    encode_room_created,
+    encode_room_joined,
+    parse_room_request,
+)
 from server import config
 from server.game.admission import AdmissionPlayer, GameAdmission
 from server.game.controller import GameController
 from server.game.game_registry import GameRegistry
+from server.game.room_registry import RoomRegistry
 from server.game.tick_loop import run_tick_loop
 from server.services.matchmaker import (
     Matchmaker,
     MatchmakingTimeoutError,
 )
 from server.services.reconnect import ReconnectError, ReconnectService
+from server.services.room_service import (
+    RoomCancelledError,
+    RoomService,
+    RoomServiceError,
+)
 from server.services.session_registry import SessionRegistry
 from server.services.auth import AuthError
 from server.transport.connection_io import run_connection_io
@@ -44,6 +64,8 @@ class GameServer:
         reconnect_grace_period_seconds: float = (
             config.RECONNECT_GRACE_PERIOD_SECONDS
         ),
+        room_registry=None,
+        room_code_factory=None,
     ):
         if auth_service is None:
             raise TypeError("AUTH_SERVICE_REQUIRED")
@@ -66,6 +88,14 @@ class GameServer:
             self._admission.admit_pair,
             rating_range=match_rating_range,
             timeout_seconds=match_timeout_seconds,
+        )
+        self._room_registry = (
+            room_registry if room_registry is not None else RoomRegistry()
+        )
+        self._rooms = RoomService(
+            self._room_registry,
+            self._admission.admit_pair,
+            room_code_factory=room_code_factory,
         )
         self._reconnect = ReconnectService(
             self._sessions,
@@ -114,6 +144,7 @@ class GameServer:
         if tick_task is not None:
             tick_task.cancel()
             await asyncio.gather(tick_task, return_exceptions=True)
+        await self._rooms.close()
         server.close()
         await server.wait_closed()
         await self._reconnect.close()
@@ -204,43 +235,9 @@ class GameServer:
                 )
             )
 
-            try:
-                join_request = parse_join(await connection.recv())
-            except ProtocolError as exc:
-                await connection.send(encode_error("0", str(exc).lower()))
-                await connection.close(code=1008, reason="invalid_join")
+            context = await self._admit_authenticated(connection, session)
+            if context is None:
                 return
-
-            if join_request.session_token != session.token:
-                await connection.send(
-                    encode_error(join_request.request_id, "invalid_session_token")
-                )
-                await connection.close(code=1008, reason="join_rejected")
-                return
-
-            rejection = self._admission.rejection_for(join_request)
-            if rejection is not None:
-                await connection.send(rejection)
-                await connection.close(code=1008, reason="join_rejected")
-                return
-
-            player = AdmissionPlayer(
-                session=session,
-                request=join_request,
-                websocket=connection,
-            )
-            try:
-                result = await self._wait_for_match(connection, player)
-            except MatchmakingTimeoutError:
-                await connection.send(
-                    encode_error(join_request.request_id, "match_timeout")
-                )
-                await connection.close(code=1008, reason="match_timeout")
-                return
-            if result is None:
-                return
-
-            context = result.context
             await run_connection_io(context, self._controller)
         except ConnectionClosed:
             pass
@@ -254,29 +251,260 @@ class GameServer:
             elif session is not None:
                 self._sessions.release(session.token)
 
-    async def _wait_for_match(
+    async def _admit_authenticated(
         self,
         connection: ServerConnection,
-        player: AdmissionPlayer,
+        session,
     ):
-        """Wait for pairing while removing a client that disconnects in queue."""
-        match_task = asyncio.create_task(
-            self._matchmaker.find_or_wait(player),
-            name=f"matchmaking-{player.session.user_id}",
+        """Route authenticated lobby commands until one creates a live context."""
+        while True:
+            message = await connection.recv()
+            operation = (
+                message.strip().split(maxsplit=1)[0]
+                if isinstance(message, str) and message.strip()
+                else ""
+            )
+            if operation not in {
+                "CREATE_ROOM",
+                "JOIN_ROOM",
+                "CANCEL_ROOM",
+            }:
+                return await self._handle_matchmaking_join(
+                    connection,
+                    session,
+                    message,
+                )
+
+            try:
+                request = parse_room_request(message)
+            except RoomProtocolError as exc:
+                await connection.send(encode_error("0", str(exc).lower()))
+                continue
+
+            if request.session_token != session.token:
+                await connection.send(
+                    encode_error(request.request_id, "invalid_session_token")
+                )
+                continue
+
+            if isinstance(request, CancelRoomRequest):
+                await self._cancel_room(connection, request)
+                continue
+
+            player = self._room_player(session, request, connection)
+            rejection = self._admission.rejection_for(player.request)
+            if rejection is not None:
+                await connection.send(rejection)
+                continue
+
+            if isinstance(request, CreateRoomRequest):
+                result = await self._create_and_wait_for_room(
+                    connection,
+                    player,
+                )
+                if result is not None:
+                    return result.context
+                continue
+
+            try:
+                result = await self._rooms.join(request.room_code, player)
+            except RoomServiceError as exc:
+                await connection.send(
+                    encode_error(request.request_id, exc.reason)
+                )
+                continue
+            await connection.send(
+                encode_room_joined(request.request_id, request.room_code)
+            )
+            return result.context
+
+    async def _handle_matchmaking_join(
+        self,
+        connection: ServerConnection,
+        session,
+        message: str,
+    ):
+        """Preserve the existing JOIN-based matchmaking path."""
+        try:
+            join_request = parse_join(message)
+        except ProtocolError as exc:
+            await connection.send(encode_error("0", str(exc).lower()))
+            await connection.close(code=1008, reason="invalid_join")
+            return None
+
+        if join_request.session_token != session.token:
+            await connection.send(
+                encode_error(join_request.request_id, "invalid_session_token")
+            )
+            await connection.close(code=1008, reason="join_rejected")
+            return None
+
+        rejection = self._admission.rejection_for(join_request)
+        if rejection is not None:
+            await connection.send(rejection)
+            await connection.close(code=1008, reason="join_rejected")
+            return None
+
+        player = AdmissionPlayer(session, join_request, connection)
+        try:
+            result, unexpected_message = await self._wait_for_admission(
+                connection,
+                self._matchmaker.find_or_wait(player),
+                f"matchmaking-{session.user_id}",
+            )
+        except MatchmakingTimeoutError:
+            await connection.send(
+                encode_error(join_request.request_id, "match_timeout")
+            )
+            await connection.close(code=1008, reason="match_timeout")
+            return None
+        if unexpected_message is not None:
+            await connection.send(
+                encode_error(join_request.request_id, "unexpected_lobby_message")
+            )
+            return None
+        return result.context
+
+    async def _create_and_wait_for_room(
+        self,
+        connection: ServerConnection,
+        creator: AdmissionPlayer,
+    ):
+        """Create one room and wait for either a joiner or its cancellation."""
+        try:
+            waiting = await self._rooms.create(creator)
+        except RoomServiceError as exc:
+            await connection.send(
+                encode_error(creator.request.request_id, exc.reason)
+            )
+            return None
+
+        room_code = waiting.room.room_code
+        await connection.send(
+            encode_room_created(creator.request.request_id, room_code)
         )
-        closed_task = asyncio.create_task(
-            connection.wait_closed(),
-            name=f"queue-connection-{player.session.user_id}",
+
+        while True:
+            try:
+                result, message = await self._wait_for_admission(
+                    connection,
+                    asyncio.shield(waiting.admission),
+                    f"room-{room_code}-{creator.session.user_id}",
+                )
+            except RoomCancelledError:
+                return None
+            except ConnectionClosed:
+                await self._cancel_waiting_room(
+                    room_code,
+                    creator.session.token,
+                )
+                await asyncio.gather(
+                    waiting.admission,
+                    return_exceptions=True,
+                )
+                raise
+
+            if result is not None:
+                return result
+
+            try:
+                request = parse_room_request(message)
+            except RoomProtocolError as exc:
+                await connection.send(encode_error("0", str(exc).lower()))
+                continue
+
+            if not isinstance(request, CancelRoomRequest):
+                await connection.send(
+                    encode_error(request.request_id, "room_waiting")
+                )
+                continue
+            if request.session_token != creator.session.token:
+                await connection.send(
+                    encode_error(request.request_id, "invalid_session_token")
+                )
+                continue
+            if request.room_code != room_code:
+                await connection.send(
+                    encode_error(request.request_id, "room_not_found")
+                )
+                continue
+
+            await self._cancel_room(connection, request)
+            await asyncio.gather(
+                waiting.admission,
+                return_exceptions=True,
+            )
+            return None
+
+    async def _cancel_room(
+        self,
+        connection: ServerConnection,
+        request: CancelRoomRequest,
+    ) -> bool:
+        """Apply one cancellation request and send its correlated response."""
+        try:
+            await self._rooms.cancel(
+                request.room_code,
+                request.session_token,
+            )
+        except RoomServiceError as exc:
+            await connection.send(
+                encode_error(request.request_id, exc.reason)
+            )
+            return False
+        await connection.send(
+            encode_room_cancelled(request.request_id, request.room_code)
+        )
+        return True
+
+    async def _cancel_waiting_room(
+        self,
+        room_code: str,
+        creator_token: str,
+    ) -> None:
+        """Remove an abandoned waiting room without sending to a closed socket."""
+        try:
+            await self._rooms.cancel(room_code, creator_token)
+        except RoomServiceError:  # pragma: no cover - concurrent cleanup guard
+            return
+
+    @staticmethod
+    def _room_player(session, request, connection) -> AdmissionPlayer:
+        """Adapt a room request to the existing game-admission contract."""
+        join_request = JoinRequest(
+            request.request_id,
+            request.session_token,
+            request.requested_config,
+        )
+        return AdmissionPlayer(session, join_request, connection)
+
+    @staticmethod
+    async def _wait_for_admission(
+        connection: ServerConnection,
+        admission,
+        task_name: str,
+    ) -> tuple[object | None, object | None]:
+        """Wait for admission or one message using the same race for both paths."""
+        async def await_admission():
+            return await admission
+
+        admission_task = asyncio.create_task(
+            await_admission(),
+            name=task_name,
+        )
+        message_task = asyncio.create_task(
+            connection.recv(),
+            name=f"{task_name}-message",
         )
         done, _ = await asyncio.wait(
-            {match_task, closed_task},
+            {admission_task, message_task},
             return_when=asyncio.FIRST_COMPLETED,
         )
-        if match_task in done:
-            closed_task.cancel()
-            await asyncio.gather(closed_task, return_exceptions=True)
-            return match_task.result()
+        if admission_task in done:
+            message_task.cancel()
+            await asyncio.gather(message_task, return_exceptions=True)
+            return admission_task.result(), None
 
-        match_task.cancel()
-        await asyncio.gather(match_task, return_exceptions=True)
-        return None
+        admission_task.cancel()
+        await asyncio.gather(admission_task, return_exceptions=True)
+        return None, message_task.result()
