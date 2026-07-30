@@ -12,7 +12,9 @@ from networking.protocols.game import (
 from server.game import admission as admission_module
 from server.game.admission import AdmissionPlayer, GameAdmission
 from server.game.game_registry import GameRegistry
+from server.game.game_result import FinishReason, GameResult
 from server.services.session_registry import ActiveSession, SessionState
+from server.transport.connection import ConnectionRole
 
 
 def _admission_with_predictable_ids():
@@ -105,6 +107,77 @@ def test_first_player_config_is_authoritative_for_second(monkeypatch):
     )
     assert black_config.was_overridden
     assert black_config.effective_config == STANDARD_GAME_CONFIG
+
+
+def test_admit_spectator_uses_existing_match_without_occupying_a_color():
+    _, admission = _admission_with_predictable_ids()
+    players = admission.admit_pair(
+        _player("white-token", 1, "Alice", "join-white"),
+        _player("black-token", 2, "Bob", "join-black"),
+    )
+    match = players["white-token"].match
+    spectator = _player(
+        "spectator-token",
+        3,
+        "Carol",
+        "join-spectator",
+    )
+
+    result = admission.admit_spectator(spectator, match)
+
+    assert result.match is match
+    assert result.context.role is ConnectionRole.SPECTATOR
+    assert result.context.color is None
+    assert spectator.session.game_id == match.game_id
+    assert spectator.session.color is None
+    assert spectator.session.state is SessionState.SPECTATING
+    config_message, state_message = _drain(result.context)
+    assert not parse_config_response(config_message).was_overridden
+    state = decode_state(state_message)
+    assert state.role == "SPECTATOR"
+    assert state.assigned_color is None
+    assert state.player_names == {"w": "Alice", "b": "Bob"}
+
+
+def test_admit_spectator_rejects_invalid_busy_and_finished_admissions():
+    _, admission = _admission_with_predictable_ids()
+    players = admission.admit_pair(
+        _player("white-token", 1, "Alice", "join-white"),
+        _player("black-token", 2, "Bob", "join-black"),
+    )
+    match = players["white-token"].match
+
+    try:
+        admission.admit_spectator(object(), match)
+    except TypeError as exc:
+        assert str(exc) == "ADMISSION_PLAYER_REQUIRED"
+    else:
+        raise AssertionError("invalid spectator was admitted")
+
+    spectator = _player("spectator-token", 3, "Carol", "join-spectator")
+    try:
+        admission.admit_spectator(spectator, object())
+    except TypeError as exc:
+        assert str(exc) == "MATCH_REQUIRED"
+    else:
+        raise AssertionError("spectator entered an invalid match")
+
+    spectator.session.state = SessionState.QUEUED
+    try:
+        admission.admit_spectator(spectator, match)
+    except ValueError as exc:
+        assert str(exc) == "SESSION_NOT_AVAILABLE"
+    else:
+        raise AssertionError("busy spectator was admitted")
+
+    spectator.session.state = SessionState.LOBBY
+    match.finish(GameResult(PieceColor.WHITE, FinishReason.RESIGN, 10))
+    try:
+        admission.admit_spectator(spectator, match)
+    except ValueError as exc:
+        assert str(exc) == "GAME_ALREADY_FINISHED"
+    else:
+        raise AssertionError("spectator entered a finished match")
 
 
 def test_rejection_for_unsupported_config_does_not_create_match():

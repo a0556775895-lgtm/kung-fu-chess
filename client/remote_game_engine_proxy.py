@@ -27,8 +27,18 @@ class RemoteGameEngineProxy:
     def __init__(self, network_client, request_id_factory=None):
         """Start from the validated handshake snapshot held by NetworkClient."""
         initial_state = network_client.initial_state
-        if initial_state.assigned_color not in {"w", "b"}:
+        if initial_state.role not in {"PLAYER", "SPECTATOR"}:
+            raise ValueError("GAME_ROLE_REQUIRED")
+        if (
+            initial_state.role == "PLAYER"
+            and initial_state.assigned_color not in {"w", "b"}
+        ):
             raise ValueError("PLAYER_COLOR_REQUIRED")
+        if (
+            initial_state.role == "SPECTATOR"
+            and initial_state.assigned_color is not None
+        ):
+            raise ValueError("SPECTATOR_COLOR_FORBIDDEN")
         if not initial_state.game_id:
             raise ValueError("GAME_ID_REQUIRED")
 
@@ -37,12 +47,13 @@ class RemoteGameEngineProxy:
             lambda prefix: f"{prefix}-{uuid.uuid4().hex}"
         )
         self._board = SnapshotBoardView(initial_state)
+        self._role = initial_state.role
         self._assigned_color = initial_state.assigned_color
         self._game_id = initial_state.game_id
         self._last_sequence = initial_state.sequence
         self._responses = {}
         self._events = []
-        self._opponent_reconnect_deadline = None
+        self._disconnected_player_deadlines = {}
 
     @property
     def board(self) -> SnapshotBoardView:
@@ -50,18 +61,26 @@ class RemoteGameEngineProxy:
         return self._board
 
     @property
-    def assigned_color(self) -> str:
-        """Return the player side assigned by the authoritative server."""
+    def assigned_color(self) -> str | None:
+        """Return the assigned player side, or None while spectating."""
         return self._assigned_color
+
+    @property
+    def can_control(self) -> bool:
+        """Whether this remote participant owns a movable player side."""
+        return self._role == "PLAYER"
 
     @property
     def opponent_reconnect_seconds(self) -> int | None:
         """Return the local countdown for a server-reported opponent disconnect."""
-        if self._opponent_reconnect_deadline is None:
+        if not self._disconnected_player_deadlines:
             return None
         return max(
             0,
-            math.ceil(self._opponent_reconnect_deadline - time.monotonic()),
+            min(
+                math.ceil(deadline - time.monotonic())
+                for deadline in self._disconnected_player_deadlines.values()
+            ),
         )
 
     def snapshot(self, selected_cell: Position | None = None) -> GameSnapshot:
@@ -70,7 +89,7 @@ class RemoteGameEngineProxy:
 
     def request_move(self, source: Position, destination: Position) -> str | None:
         """Queue MOVE for an owned source piece and return its request id."""
-        if not self._network_client.is_connected:
+        if not self.can_control or not self._network_client.is_connected:
             return None
         piece = self._owned_piece_at(source)
         if piece is None:
@@ -91,7 +110,7 @@ class RemoteGameEngineProxy:
 
     def request_jump(self, source: Position) -> str | None:
         """Queue JUMP for an owned source piece and return its request id."""
-        if not self._network_client.is_connected:
+        if not self.can_control or not self._network_client.is_connected:
             return None
         piece = self._owned_piece_at(source)
         if piece is None:
@@ -156,6 +175,9 @@ class RemoteGameEngineProxy:
     def _track_connection_lifecycle(self, event: dict) -> None:
         """Track only opponent lifecycle events needed by the graphical overlay."""
         event_type = event.get("type")
+        if event_type == "GAME_OVER":
+            self._disconnected_player_deadlines.clear()
+            return
         color = event.get("color")
         if color == self._assigned_color:
             return
@@ -168,9 +190,11 @@ class RemoteGameEngineProxy:
                 or grace < 0
             ):
                 raise ProtocolError("INVALID_RECONNECT_GRACE_PERIOD")
-            self._opponent_reconnect_deadline = time.monotonic() + grace
-        elif event_type in {"PLAYER_RECONNECTED", "GAME_OVER"}:
-            self._opponent_reconnect_deadline = None
+            self._disconnected_player_deadlines[color] = (
+                time.monotonic() + grace
+            )
+        elif event_type == "PLAYER_RECONNECTED":
+            self._disconnected_player_deadlines.pop(color, None)
 
     def _accept_ordered(self, game_id, sequence) -> bool:
         if game_id != self._game_id:

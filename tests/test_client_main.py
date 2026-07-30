@@ -19,6 +19,7 @@ class _FakeNetworkClient:
         self.closed = False
         self.is_connected = True
         self.connection_status = ConnectionStatus(ConnectionState.CONNECTED)
+        self.room_code = None
         self.failure = None
         self.instances.append(self)
 
@@ -35,6 +36,7 @@ class _FakeProxy:
         self.board = object()
         self.processed = 0
         self.opponent_reconnect_seconds = None
+        self.can_control = True
 
     def process_network_messages(self):
         self.processed += 1
@@ -85,6 +87,7 @@ def test_run_client_composes_remote_display_and_closes_network(monkeypatch):
     assert captured["proxy"].processed == 1
     assert captured["options"]["event_source"] is not captured["proxy"]
     assert captured["options"]["starts_game"] is False
+    assert captured["options"]["input_enabled"] is True
 
 
 def test_run_client_closes_network_when_display_fails(monkeypatch):

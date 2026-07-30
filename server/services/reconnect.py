@@ -5,6 +5,8 @@ import asyncio
 from model.piece import PieceColor
 from server import config
 from server.game.game_result import FinishReason, GameResult
+from server.services.session_registry import SessionState
+from server.transport.connection import ConnectionRole
 
 
 class ReconnectError(ValueError):
@@ -55,11 +57,13 @@ class ReconnectService:
                 return False
 
             self._sessions.mark_disconnected(session.token)
-            match.pause_for(session.color)
-            match.broadcaster.publish_player_disconnected(
-                session.color,
-                self._grace_period_seconds,
-            )
+            is_spectator = context.role is ConnectionRole.SPECTATOR
+            if not is_spectator:
+                match.pause_for(session.color)
+                match.broadcaster.publish_player_disconnected(
+                    session.color,
+                    self._grace_period_seconds,
+                )
             previous_timeout = self._timeouts.pop(session.token, None)
             if previous_timeout is not None:
                 previous_timeout.cancel()
@@ -77,7 +81,11 @@ class ReconnectService:
                 raise ReconnectError("invalid_session_token")
             if session.is_connected:
                 raise ReconnectError("session_already_connected")
-            if session.game_id is None or session.color is None:
+            is_spectator = session.state is SessionState.SPECTATING
+            if (
+                session.game_id is None
+                or (not is_spectator and session.color is None)
+            ):
                 raise ReconnectError("reconnect_not_available")
 
             try:
@@ -102,8 +110,9 @@ class ReconnectService:
             timeout = self._timeouts.pop(session.token, None)
             if timeout is not None:
                 timeout.cancel()
-            match.resume_for(session.color)
-            match.broadcaster.publish_player_reconnected(session.color)
+            if not is_spectator:
+                match.resume_for(session.color)
+                match.broadcaster.publish_player_reconnected(session.color)
             return session, result
 
     async def close(self) -> None:
@@ -130,6 +139,9 @@ class ReconnectService:
                 try:
                     match = self._registry.get(session.game_id)
                 except KeyError:
+                    self._sessions.release(token)
+                    return
+                if session.state is SessionState.SPECTATING:
                     self._sessions.release(token)
                     return
                 if match.result is None:

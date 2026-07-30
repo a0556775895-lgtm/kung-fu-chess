@@ -169,6 +169,12 @@ def test_network_event_adapter_exposes_its_local_bus():
 def test_remote_proxy_validates_handshake_and_messages():
     with pytest.raises(ValueError, match="PLAYER_COLOR_REQUIRED"):
         RemoteGameEngineProxy(_FakeNetwork(_snapshot(assigned_color=None)))
+    with pytest.raises(ValueError, match="GAME_ROLE_REQUIRED"):
+        RemoteGameEngineProxy(_FakeNetwork(_snapshot(role=None)))
+    with pytest.raises(ValueError, match="SPECTATOR_COLOR_FORBIDDEN"):
+        RemoteGameEngineProxy(
+            _FakeNetwork(_snapshot(role="SPECTATOR", assigned_color="w"))
+        )
     with pytest.raises(ValueError, match="GAME_ID_REQUIRED"):
         RemoteGameEngineProxy(_FakeNetwork(_snapshot(game_id=None)))
 

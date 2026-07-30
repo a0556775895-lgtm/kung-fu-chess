@@ -38,6 +38,7 @@ class DisplayManager:
         event_source=None,
         starts_game=None,
         extra_renderers=(),
+        input_enabled=True,
     ):
         """Build local mode by default, or use an injected local/remote game source."""
         local_mode = board is None and game_engine is None
@@ -63,6 +64,7 @@ class DisplayManager:
         self._event_source = event_source
         self._starts_game = local_mode if starts_game is None else starts_game
         self._extra_renderers = tuple(extra_renderers)
+        self._input_enabled = bool(input_enabled)
 
         self._geometry = BoardGeometry()
         self._background_loader = BackgroundLoader(self._geometry)
@@ -101,9 +103,12 @@ class DisplayManager:
         self._command_sender = GameCommandSender(self._controller, self._game_engine)
 
         cv2.namedWindow(WINDOW_NAME)
-        cv2.setMouseCallback(WINDOW_NAME, self._on_mouse)
+        if self._input_enabled:
+            cv2.setMouseCallback(WINDOW_NAME, self._on_mouse)
 
     def _on_mouse(self, event, x, y, flags, param):
+        if not self._input_enabled:
+            return
         command = None
         if event == cv2.EVENT_LBUTTONDOWN:
             command = self._extractor.extract_left_click(x, y)

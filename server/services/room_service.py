@@ -6,7 +6,7 @@ import secrets
 import string
 
 from server.game.admission import AdmissionPlayer, AdmissionResult
-from server.game.room import Room
+from server.game.room import Room, RoomStatus
 from server.game.room_registry import RoomRegistry
 from server.services.session_registry import SessionState
 
@@ -51,6 +51,7 @@ class RoomService:
         registry: RoomRegistry,
         pair_factory,
         room_code_factory=None,
+        spectator_factory=None,
     ):
         if not isinstance(registry, RoomRegistry):
             raise TypeError("ROOM_REGISTRY_REQUIRED")
@@ -58,8 +59,11 @@ class RoomService:
             raise TypeError("PAIR_FACTORY_NOT_CALLABLE")
         if room_code_factory is not None and not callable(room_code_factory):
             raise TypeError("ROOM_CODE_FACTORY_NOT_CALLABLE")
+        if spectator_factory is not None and not callable(spectator_factory):
+            raise TypeError("SPECTATOR_FACTORY_NOT_CALLABLE")
         self._registry = registry
         self._pair_factory = pair_factory
+        self._spectator_factory = spectator_factory
         self._room_code_factory = room_code_factory or self._random_room_code
         self._waiting_by_code = {}
         self._lock = asyncio.Lock()
@@ -87,10 +91,30 @@ class RoomService:
         room_code: str,
         player: AdmissionPlayer,
     ) -> AdmissionResult:
-        """Pair one idle player with the creator of a waiting room."""
+        """Fill a waiting player seat or attach a spectator to an active room."""
         self._validate_player(player)
         async with self._lock:
-            waiting = self._get_waiting(room_code)
+            try:
+                room = self._registry.get(room_code)
+            except KeyError as exc:
+                raise RoomServiceError("room_not_found") from exc
+            waiting = self._waiting_by_code.get(room_code)
+            if waiting is None:
+                if room.status is RoomStatus.FINISHED:
+                    raise RoomServiceError("room_finished")
+                if (
+                    room.status is not RoomStatus.ACTIVE
+                    or self._spectator_factory is None
+                    or room.match is None
+                ):
+                    raise RoomServiceError("room_not_waiting")
+                if player.session.state is not SessionState.LOBBY:
+                    raise RoomServiceError("session_not_available")
+                try:
+                    return self._spectator_factory(player, room.match)
+                except ValueError as exc:
+                    raise RoomServiceError(str(exc).lower()) from exc
+
             if waiting.creator.session.token == player.session.token:
                 raise RoomServiceError("cannot_join_own_room")
             if player.session.state is not SessionState.LOBBY:

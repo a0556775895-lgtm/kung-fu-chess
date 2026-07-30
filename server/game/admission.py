@@ -96,11 +96,13 @@ class GameAdmission:
             first,
             match,
             PieceColor.WHITE,
+            ConnectionRole.PLAYER,
         )
         second_context = self._create_context(
             second,
             match,
             PieceColor.BLACK,
+            ConnectionRole.PLAYER,
         )
         match.add_connection(first_context)
         match.add_connection(second_context)
@@ -119,6 +121,35 @@ class GameAdmission:
             second.session.token: AdmissionResult(second_context, match),
         }
 
+    def admit_spectator(
+        self,
+        spectator: AdmissionPlayer,
+        match: Match,
+    ) -> AdmissionResult:
+        """Attach one authenticated spectator without occupying a player seat."""
+        if not isinstance(spectator, AdmissionPlayer):
+            raise TypeError("ADMISSION_PLAYER_REQUIRED")
+        if not isinstance(match, Match):
+            raise TypeError("MATCH_REQUIRED")
+        if spectator.session.state is not SessionState.LOBBY:
+            raise ValueError("SESSION_NOT_AVAILABLE")
+        if match.result is not None:
+            raise ValueError("GAME_ALREADY_FINISHED")
+
+        context = self._create_context(
+            spectator,
+            match,
+            None,
+            ConnectionRole.SPECTATOR,
+        )
+        match.add_connection(context)
+        spectator.session.game_id = match.game_id
+        spectator.session.color = None
+        spectator.session.state = SessionState.SPECTATING
+        self._enqueue_config(context, spectator.request, match)
+        match.send_state(context)
+        return AdmissionResult(context, match)
+
     def release(self, context: ConnectionContext) -> None:
         """Remove a disconnected context if its Match still exists."""
         try:
@@ -134,14 +165,24 @@ class GameAdmission:
         request: JoinRequest,
         websocket,
     ) -> AdmissionResult:
-        """Attach a new connection to one persistent authenticated player seat."""
+        """Restore one persistent player seat or spectator subscription."""
         match = self._registry.get(session.game_id)
         player = AdmissionPlayer(
             session=session,
             request=request,
             websocket=websocket,
         )
-        context = self._create_context(player, match, session.color)
+        role = (
+            ConnectionRole.SPECTATOR
+            if session.state is SessionState.SPECTATING
+            else ConnectionRole.PLAYER
+        )
+        context = self._create_context(
+            player,
+            match,
+            session.color,
+            role,
+        )
         match.add_connection(context)
         self._enqueue_config(context, request, match)
         match.send_state(context)
@@ -151,12 +192,13 @@ class GameAdmission:
         self,
         player: AdmissionPlayer,
         match: Match,
-        color: PieceColor,
+        color: PieceColor | None,
+        role: ConnectionRole,
     ) -> ConnectionContext:
         return ConnectionContext(
             connection_id=self._connection_id_factory(),
             game_id=match.game_id,
-            role=ConnectionRole.PLAYER,
+            role=role,
             color=color,
             user_id=player.session.user_id,
             username=player.session.username,

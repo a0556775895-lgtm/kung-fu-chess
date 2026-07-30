@@ -99,6 +99,7 @@ class GameServer:
             self._room_registry,
             self._admission.admit_pair,
             room_code_factory=room_code_factory,
+            spectator_factory=self._admission.admit_spectator,
         )
         self._reconnect = ReconnectService(
             self._sessions,

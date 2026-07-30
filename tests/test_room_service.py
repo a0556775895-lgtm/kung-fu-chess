@@ -13,6 +13,7 @@ from server.game.admission import (
     GameAdmission,
 )
 from server.game.game_registry import GameRegistry
+from server.game.game_result import FinishReason, GameResult
 from server.game.room import RoomStatus
 from server.game.room_registry import RoomRegistry
 from server.services.room_service import (
@@ -61,6 +62,87 @@ def test_room_service_reuses_game_admission_for_both_players():
         assert creator.session.state is SessionState.IN_GAME
         assert joiner.session.state is SessionState.IN_GAME
         assert service.waiting_count == 0
+
+    asyncio.run(scenario())
+
+
+def test_room_service_joins_later_clients_as_spectators():
+    async def scenario():
+        game_registry = GameRegistry()
+        admission = GameAdmission(
+            game_registry,
+            game_id_factory=lambda: "room-game",
+        )
+        service = RoomService(
+            RoomRegistry(),
+            admission.admit_pair,
+            room_code_factory=lambda: "AB12",
+            spectator_factory=admission.admit_spectator,
+        )
+        waiting = await service.create(_player("creator", 1))
+        await service.join("AB12", _player("joiner", 2))
+        spectator = _player("spectator", 3)
+
+        result = await service.join("AB12", spectator)
+
+        assert result.match is waiting.room.match
+        assert result.context.color is None
+        assert spectator.session.state is SessionState.SPECTATING
+        assert len(result.match.connections()) == 3
+
+    asyncio.run(scenario())
+
+
+def test_room_service_rejects_busy_or_finished_spectators():
+    async def scenario():
+        admission = GameAdmission(
+            GameRegistry(),
+            game_id_factory=lambda: "room-game",
+        )
+        service = RoomService(
+            RoomRegistry(),
+            admission.admit_pair,
+            room_code_factory=lambda: "AB12",
+            spectator_factory=admission.admit_spectator,
+        )
+        waiting = await service.create(_player("creator", 1))
+        await service.join("AB12", _player("joiner", 2))
+
+        busy = _player("busy", 3)
+        busy.session.state = SessionState.QUEUED
+        with pytest.raises(RoomServiceError, match="session_not_available"):
+            await service.join("AB12", busy)
+
+        waiting.room.match.finish(
+            GameResult(PieceColor.WHITE, FinishReason.RESIGN, 10)
+        )
+        with pytest.raises(RoomServiceError, match="room_finished"):
+            await service.join("AB12", _player("late", 4))
+
+    asyncio.run(scenario())
+
+
+def test_room_service_translates_spectator_admission_rejection():
+    async def scenario():
+        admission = GameAdmission(
+            GameRegistry(),
+            game_id_factory=lambda: "room-game",
+        )
+
+        def reject_spectator(_player, _match):
+            raise ValueError("SPECTATOR_REJECTED")
+
+        service = RoomService(
+            RoomRegistry(),
+            admission.admit_pair,
+            room_code_factory=lambda: "AB12",
+            spectator_factory=reject_spectator,
+        )
+        await service.create(_player("creator", 1))
+        await service.join("AB12", _player("joiner", 2))
+
+        with pytest.raises(RoomServiceError, match="spectator_rejected"):
+            await service.join("AB12", _player("spectator", 3))
 
     asyncio.run(scenario())
 
@@ -198,6 +280,12 @@ def test_room_service_validates_dependencies_players_and_generated_codes():
         RoomService(RoomRegistry(), None)
     with pytest.raises(TypeError, match="ROOM_CODE_FACTORY_NOT_CALLABLE"):
         RoomService(RoomRegistry(), lambda: None, object())
+    with pytest.raises(TypeError, match="SPECTATOR_FACTORY_NOT_CALLABLE"):
+        RoomService(
+            RoomRegistry(),
+            lambda: None,
+            spectator_factory=object(),
+        )
 
     async def scenario():
         service = RoomService(

@@ -29,3 +29,20 @@ def test_display_update_uses_injected_updater_and_remote_snapshot():
         ("animate", 16, snapshot),
     ]
     assert display._last_snapshot is snapshot
+
+
+def test_display_ignores_mouse_input_while_spectating():
+    display = DisplayManager.__new__(DisplayManager)
+    display._input_enabled = False
+    display._extractor = SimpleNamespace(
+        extract_left_click=lambda *_args: (_ for _ in ()).throw(
+            AssertionError("spectator input was parsed")
+        )
+    )
+    display._command_sender = SimpleNamespace(
+        send=lambda _command: (_ for _ in ()).throw(
+            AssertionError("spectator command was sent")
+        )
+    )
+
+    display._on_mouse(1, 10, 10, 0, None)

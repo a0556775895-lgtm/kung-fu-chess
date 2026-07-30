@@ -112,6 +112,79 @@ def test_proxy_does_not_send_empty_or_opponent_source():
     assert network.sent == []
 
 
+def test_spectator_proxy_is_read_only_and_accepts_server_updates():
+    spectator_state = replace(
+        _snapshot(),
+        role="SPECTATOR",
+        assigned_color=None,
+    )
+    network = _FakeNetworkClient(spectator_state)
+    proxy = RemoteGameEngineProxy(network)
+
+    assert not proxy.can_control
+    assert proxy.assigned_color is None
+    assert proxy.request_move(Position(6, 4), Position(5, 4)) is None
+    assert proxy.request_jump(Position(6, 4)) is None
+    assert network.sent == []
+
+    network.incoming = [
+        encode_state(replace(spectator_state, sequence=2))
+    ]
+    assert proxy.process_network_messages() == 1
+    assert proxy.board.snapshot.sequence == 2
+
+
+def test_spectator_tracks_each_disconnected_player_until_both_return(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "client.remote_game_engine_proxy.time.monotonic",
+        lambda: 100.0,
+    )
+    network = _FakeNetworkClient(replace(
+        _snapshot(),
+        role="SPECTATOR",
+        assigned_color=None,
+    ))
+    proxy = RemoteGameEngineProxy(network)
+    network.incoming = [
+        encode_event({
+            "type": "PLAYER_DISCONNECTED",
+            "game_id": "default",
+            "sequence": 2,
+            "color": "w",
+            "grace_period_seconds": 20.0,
+        }),
+        encode_event({
+            "type": "PLAYER_DISCONNECTED",
+            "game_id": "default",
+            "sequence": 3,
+            "color": "b",
+            "grace_period_seconds": 15.0,
+        }),
+        encode_event({
+            "type": "PLAYER_RECONNECTED",
+            "game_id": "default",
+            "sequence": 4,
+            "color": "w",
+        }),
+    ]
+
+    proxy.process_network_messages()
+
+    assert proxy.opponent_reconnect_seconds == 15
+
+    network.incoming = [
+        encode_event({
+            "type": "GAME_OVER",
+            "game_id": "default",
+            "sequence": 5,
+        }),
+    ]
+    proxy.process_network_messages()
+    assert proxy.opponent_reconnect_seconds is None
+
+
 def test_proxy_blocks_commands_while_network_is_reconnecting():
     network = _FakeNetworkClient(_snapshot())
     network.is_connected = False

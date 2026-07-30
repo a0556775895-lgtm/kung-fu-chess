@@ -19,7 +19,7 @@ from server.game.game_registry import GameRegistry
 from server.game.game_result import FinishReason, GameResult
 from server.game.match import Match
 from server.services.reconnect import ReconnectError, ReconnectService
-from server.services.session_registry import SessionRegistry
+from server.services.session_registry import SessionRegistry, SessionState
 from server.transport.connection import ConnectionContext, ConnectionRole
 
 
@@ -343,6 +343,110 @@ def test_reconnect_before_timeout_cancels_loss_and_resumes_match():
         match.advance_time(50)
         assert match.server_time_ms() == 50
         await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_spectator_disconnect_and_restore_never_pause_the_match():
+    async def waiting_sleep(_seconds):
+        await asyncio.Future()
+
+    async def scenario():
+        sessions = SessionRegistry(token_factory=lambda: "spectator-token")
+        session = sessions.create(3, "Carol", 1200)
+        session.game_id = "game-1"
+        session.state = SessionState.SPECTATING
+
+        registry = GameRegistry()
+        match = Match(
+            "game-1",
+            GameEngine(create_board(STANDARD_GAME_CONFIG)),
+            game_config=STANDARD_GAME_CONFIG,
+        )
+        registry.add(match)
+        original = ConnectionContext(
+            "spectator-original",
+            "game-1",
+            ConnectionRole.SPECTATOR,
+            color=None,
+            user_id=3,
+            username="Carol",
+            session_token=session.token,
+            websocket=object(),
+        )
+        match.add_connection(original)
+        service = ReconnectService(
+            sessions,
+            registry,
+            GameAdmission(registry),
+            sleep=waiting_sleep,
+        )
+
+        assert await service.disconnect(session, original)
+        assert not match.is_paused
+        assert match.result is None
+
+        _, result = await service.restore(
+            JoinRequest(
+                "join-spectator-reconnect",
+                session.token,
+                STANDARD_GAME_CONFIG,
+            ),
+            object(),
+        )
+
+        assert result.context.role is ConnectionRole.SPECTATOR
+        assert result.context.color is None
+        assert session.state is SessionState.SPECTATING
+        assert session.is_connected
+        assert not match.is_paused
+        config_message, state_message = _drain(result.context)
+        assert parse_config_response(config_message).effective_config == (
+            STANDARD_GAME_CONFIG
+        )
+        assert decode_state(state_message).role == "SPECTATOR"
+        await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_spectator_reconnect_timeout_only_releases_its_session():
+    async def no_wait(_seconds):
+        return None
+
+    async def scenario():
+        sessions = SessionRegistry(token_factory=lambda: "spectator-token")
+        session = sessions.create(3, "Carol", 1200)
+        session.game_id = "game-1"
+        session.state = SessionState.SPECTATING
+        registry = GameRegistry()
+        match = Match(
+            "game-1",
+            GameEngine(create_board(STANDARD_GAME_CONFIG)),
+            game_config=STANDARD_GAME_CONFIG,
+        )
+        registry.add(match)
+        context = ConnectionContext(
+            "spectator",
+            "game-1",
+            ConnectionRole.SPECTATOR,
+            session_token=session.token,
+        )
+        match.add_connection(context)
+        service = ReconnectService(
+            sessions,
+            registry,
+            GameAdmission(registry),
+            sleep=no_wait,
+        )
+
+        assert await service.disconnect(session, context)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        assert sessions.get(session.token) is None
+        assert match.result is None
+        assert not match.is_paused
 
     asyncio.run(scenario())
 

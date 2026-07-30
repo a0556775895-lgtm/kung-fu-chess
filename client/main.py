@@ -63,8 +63,21 @@ def run_client(
             opponent_seconds = proxy.opponent_reconnect_seconds
             if opponent_seconds is not None:
                 return ConnectionNotice(
-                    "Opponent disconnected",
+                    (
+                        "Opponent disconnected"
+                        if proxy.can_control
+                        else "Player disconnected"
+                    ),
                     opponent_seconds,
+                )
+            if not proxy.can_control:
+                room_code = network_client.room_code
+                return ConnectionNotice(
+                    (
+                        f"Spectating room {room_code}"
+                        if room_code is not None
+                        else "Spectating"
+                    )
                 )
             return None
 
@@ -74,6 +87,7 @@ def run_client(
             game_updater=update_remote_game,
             event_source=event_adapter,
             starts_game=False,
+            input_enabled=proxy.can_control,
             extra_renderers=(
                 ConnectionStatusRenderer(connection_notice),
             ),
