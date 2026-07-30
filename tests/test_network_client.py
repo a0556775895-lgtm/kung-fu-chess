@@ -75,6 +75,25 @@ async def _wait_for_messages(client, predicate, timeout=2.0):
     return messages
 
 
+async def _wait_for_client_state(client, expected, timeout=2.0):
+    deadline = asyncio.get_running_loop().time() + timeout
+    while client.connection_status.state is not expected:
+        if asyncio.get_running_loop().time() >= deadline:
+            raise TimeoutError(f"client did not reach {expected.value}")
+        await asyncio.sleep(0.01)
+
+
+async def _authenticate_client(server, username):
+    client = NetworkClient(
+        f"ws://127.0.0.1:{server.bound_port}",
+        username,
+        PASSWORD,
+        register=True,
+    )
+    await asyncio.to_thread(client.authenticate)
+    return client
+
+
 def test_network_client_completes_join_before_start_returns(auth_service):
     async def scenario():
         server = GameServer(port=0, auth_service=auth_service)
@@ -96,6 +115,133 @@ def test_network_client_completes_join_before_start_returns(auth_service):
             assert client.initial_state.game_id == opponent.initial_state.game_id
         finally:
             await _close_clients(client, opponent)
+            await server.close()
+
+    asyncio.run(scenario())
+
+
+def test_network_client_authenticates_without_starting_matchmaking(auth_service):
+    async def scenario():
+        server = GameServer(port=0, auth_service=auth_service)
+        await server.start()
+        client = None
+        try:
+            client = await _authenticate_client(server, "Alice")
+
+            assert client.auth_response.username == "Alice"
+            assert client.connection_status.state is ConnectionState.LOBBY
+            assert not client.is_connected
+            assert client.room_code is None
+            assert client.lobby_error is None
+        finally:
+            await _close_clients(client)
+            await server.close()
+
+    asyncio.run(scenario())
+
+
+def test_network_clients_create_and_join_room_before_game(auth_service):
+    async def scenario():
+        server = GameServer(
+            port=0,
+            auth_service=auth_service,
+            room_code_factory=lambda: "AB12",
+        )
+        await server.start()
+        creator = joiner = None
+        try:
+            creator, joiner = await asyncio.gather(
+                _authenticate_client(server, "Alice"),
+                _authenticate_client(server, "Bob"),
+            )
+
+            creator.create_room()
+            await _wait_for_client_state(
+                creator,
+                ConnectionState.WAITING_IN_ROOM,
+            )
+            deadline = asyncio.get_running_loop().time() + 2.0
+            while creator.room_code is None:
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise TimeoutError("creator did not receive room code")
+                await asyncio.sleep(0.01)
+
+            joiner.join_room(creator.room_code)
+            await asyncio.gather(
+                asyncio.to_thread(creator.wait_for_game, 2.0),
+                asyncio.to_thread(joiner.wait_for_game, 2.0),
+            )
+
+            assert creator.is_connected
+            assert joiner.is_connected
+            assert creator.room_code == joiner.room_code == "AB12"
+            assert creator.initial_state.assigned_color == "w"
+            assert joiner.initial_state.assigned_color == "b"
+            assert (
+                creator.initial_state.game_id
+                == joiner.initial_state.game_id
+            )
+        finally:
+            await _close_clients(creator, joiner)
+            await server.close()
+
+    asyncio.run(scenario())
+
+
+def test_network_client_cancels_room_and_returns_to_lobby(auth_service):
+    async def scenario():
+        generated_codes = iter(("AB12", "CD34"))
+        server = GameServer(
+            port=0,
+            auth_service=auth_service,
+            room_code_factory=lambda: next(generated_codes),
+        )
+        await server.start()
+        creator = None
+        try:
+            creator = await _authenticate_client(server, "Alice")
+
+            creator.create_room()
+            deadline = asyncio.get_running_loop().time() + 2.0
+            while creator.room_code != "AB12":
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise TimeoutError("first room was not created")
+                await asyncio.sleep(0.01)
+
+            creator.cancel_room()
+            await _wait_for_client_state(creator, ConnectionState.LOBBY)
+
+            assert creator.room_code is None
+            assert creator.lobby_error is None
+
+            creator.create_room()
+            deadline = asyncio.get_running_loop().time() + 2.0
+            while creator.room_code != "CD34":
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise TimeoutError("second room was not created")
+                await asyncio.sleep(0.01)
+        finally:
+            await _close_clients(creator)
+            await server.close()
+
+    asyncio.run(scenario())
+
+
+def test_network_client_recovers_from_missing_room(auth_service):
+    async def scenario():
+        server = GameServer(port=0, auth_service=auth_service)
+        await server.start()
+        client = None
+        try:
+            client = await _authenticate_client(server, "Alice")
+
+            client.join_room("ZZ99")
+            await _wait_for_client_state(client, ConnectionState.LOBBY)
+
+            assert client.lobby_error == "room_not_found"
+            assert client.room_code is None
+        finally:
+            await _close_clients(client)
             await server.close()
 
     asyncio.run(scenario())
@@ -306,7 +452,7 @@ def test_network_client_reconnects_same_session_after_socket_drop(auth_service):
                 if context.session_token == client.session_token
             )
             original_connection_id = original.connection_id
-            original_thread = client._thread
+            original_thread = client._transport._thread
 
             await original.websocket.close(code=1011, reason="test-drop")
 
@@ -328,7 +474,7 @@ def test_network_client_reconnects_same_session_after_socket_drop(auth_service):
                     raise TimeoutError("client did not reconnect")
                 await asyncio.sleep(0.01)
 
-            assert client._thread is original_thread
+            assert client._transport._thread is original_thread
             assert client.connection_status.state is ConnectionState.CONNECTED
             assert restored.game_id == game_id
             assert restored.color.value == client.initial_state.assigned_color
@@ -354,7 +500,7 @@ def test_network_client_reconnects_same_session_after_socket_drop(auth_service):
                     raise TimeoutError("client did not reconnect a second time")
                 await asyncio.sleep(0.01)
 
-            assert client._thread is original_thread
+            assert client._transport._thread is original_thread
             assert client.connection_status.state is ConnectionState.CONNECTED
             assert not match.is_paused
         finally:

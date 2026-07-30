@@ -12,6 +12,14 @@ from bus.event_bus import EventBus
 from client import cli_auth
 from client import network_client as network_client_module
 from client.network_client import ConnectionState, NetworkClient
+from client.transport import lobby_session as lobby_session_module
+from client.transport import websocket_transport as websocket_transport_module
+from client.transport.lobby_session import (
+    LobbyAction,
+    LobbyActionKind,
+    LobbySession,
+    StopRequested,
+)
 from client.network_event_adapter import NetworkEventAdapter
 from client.remote_game_engine_proxy import RemoteGameEngineProxy
 from client.snapshot_board_view import SnapshotBoardView
@@ -493,14 +501,60 @@ def test_network_client_unavailable_state_and_invalid_timeouts():
         _ = client.session_token
     with pytest.raises(ValueError, match="INVALID_START_TIMEOUT"):
         client.start(timeout=0)
+    with pytest.raises(ValueError, match="INVALID_AUTH_TIMEOUT"):
+        client.authenticate(timeout=0)
+    with pytest.raises(RuntimeError, match="client_not_started"):
+        client.wait_for_game()
     with pytest.raises(ValueError, match="INVALID_CLOSE_TIMEOUT"):
         client.close(timeout=0)
     client.close()
 
 
+def test_network_client_lobby_commands_validate_state_and_input():
+    client = NetworkClient("ws://localhost:1", "Alice", "secret")
+    with pytest.raises(RuntimeError, match="client_not_in_lobby"):
+        client.start_matchmaking()
+    with pytest.raises(RuntimeError, match="client_not_waiting_in_created_room"):
+        client.cancel_room()
+    client._transport._session_token = "session-token"
+    with pytest.raises(ValueError, match="INVALID_ROOM_CODE"):
+        client.join_room("bad code")
+
+    client._transport._state = ConnectionState.LOBBY
+    client.start_matchmaking()
+    action = client._transport._lobby._actions.get_nowait()
+    assert action.kind is LobbyActionKind.MATCHMAKE
+
+    client._transport._state = ConnectionState.WAITING_IN_ROOM
+    client._transport._lobby._room_code = "AB12"
+    with pytest.raises(RuntimeError, match="client_not_waiting_in_created_room"):
+        client.cancel_room()
+
+
+def test_network_client_lobby_queue_rolls_back_when_action_is_pending():
+    client = NetworkClient("ws://localhost:1", "Alice", "secret")
+    client._transport._state = ConnectionState.LOBBY
+    pending = LobbyAction(LobbyActionKind.MATCHMAKE)
+    client._transport._lobby._actions.put_nowait(pending)
+
+    with pytest.raises(RuntimeError, match="client_lobby_action_pending"):
+        client.create_room()
+
+    assert client.connection_status.state is ConnectionState.LOBBY
+
+
+def test_network_client_wait_for_game_validates_timeout_and_waits():
+    client = NetworkClient("ws://localhost:1", "Alice", "secret")
+    client._transport._thread = object()
+    with pytest.raises(ValueError, match="INVALID_GAME_WAIT_TIMEOUT"):
+        client.wait_for_game(0)
+    with pytest.raises(TimeoutError, match="client_game_wait_timeout"):
+        client.wait_for_game(0.01)
+
+
 def test_network_client_rejects_repeated_start_without_starting_thread():
     client = NetworkClient("ws://localhost:1", "Alice", "secret")
-    client._thread = object()
+    client._transport._thread = object()
     with pytest.raises(RuntimeError, match="client_already_started"):
         client.start()
 
@@ -512,7 +566,7 @@ def test_network_client_send_validates_type_and_capacity():
         "secret",
         queue_size=1,
     )
-    client._state = ConnectionState.CONNECTED
+    client._transport._state = ConnectionState.CONNECTED
     with pytest.raises(TypeError, match="OUTGOING_MESSAGE_NOT_TEXT"):
         client.send(b"bytes")
     client.send("first")
@@ -529,7 +583,7 @@ def test_network_client_close_reports_stuck_thread():
             return True
 
     client = NetworkClient("ws://localhost:1", "Alice", "secret")
-    client._thread = StuckThread()
+    client._transport._thread = StuckThread()
     with pytest.raises(TimeoutError, match="client_close_timeout"):
         client.close(timeout=0.01)
 
@@ -548,16 +602,39 @@ def test_network_client_start_timeout_and_generic_failure(monkeypatch):
         def is_alive(self):
             return False
 
-    monkeypatch.setattr(network_client_module, "Thread", FakeThread)
+    monkeypatch.setattr(websocket_transport_module, "Thread", FakeThread)
     timed_out = NetworkClient("ws://localhost:1", "Alice", "secret")
     with pytest.raises(TimeoutError, match="client_start_timeout"):
         timed_out.start(timeout=0.01)
 
     failed = NetworkClient("ws://localhost:1", "Alice", "secret")
-    failed._failure = ValueError("background failed")
-    failed._ready.set()
+    failed._transport._failure = ValueError("background failed")
+    failed._transport._ready.set()
     with pytest.raises(ConnectionError, match="client_connection_failed"):
         failed.start()
+
+
+def test_network_client_authenticate_timeout_closes_transport(monkeypatch):
+    class FakeThread:
+        def __init__(self, **_kwargs):
+            self.joined = False
+
+        def start(self):
+            pass
+
+        def join(self, _timeout=None):
+            self.joined = True
+
+        def is_alive(self):
+            return False
+
+    monkeypatch.setattr(websocket_transport_module, "Thread", FakeThread)
+    client = NetworkClient("ws://localhost:1", "Alice", "secret")
+
+    with pytest.raises(TimeoutError, match="client_auth_timeout"):
+        client.authenticate(timeout=0.01)
+
+    assert client.connection_status.state is ConnectionState.CLOSED
 
 
 def test_network_client_discard_outgoing_removes_pending_messages():
@@ -567,9 +644,9 @@ def test_network_client_discard_outgoing_removes_pending_messages():
         "secret",
         queue_size=1,
     )
-    client._outgoing.put_nowait("pending")
-    client._discard_outgoing()
-    assert client._outgoing.empty()
+    client._transport._outgoing.put_nowait("pending")
+    client._transport._discard_outgoing()
+    assert client._transport._outgoing.empty()
 
 
 def test_network_client_reader_rejects_binary_and_full_queue():
@@ -588,7 +665,9 @@ def test_network_client_reader_rejects_binary_and_full_queue():
 
     binary_client = NetworkClient("ws://localhost:1", "Alice", "secret")
     with pytest.raises(TypeError, match="INCOMING_MESSAGE_NOT_TEXT"):
-        asyncio.run(binary_client._reader_loop(Messages([b"bytes"])))
+        asyncio.run(
+            binary_client._transport._reader_loop(Messages([b"bytes"]))
+        )
 
     full_client = NetworkClient(
         "ws://localhost:1",
@@ -597,7 +676,9 @@ def test_network_client_reader_rejects_binary_and_full_queue():
         queue_size=1,
     )
     with pytest.raises(RuntimeError, match="client_incoming_queue_full"):
-        asyncio.run(full_client._reader_loop(Messages(["first", "second"])))
+        asyncio.run(
+            full_client._transport._reader_loop(Messages(["first", "second"]))
+        )
 
 
 class _FakeClientWebSocket:
@@ -628,6 +709,157 @@ class _FakeClientWebSocket:
             await asyncio.Future()
 
 
+def test_network_client_receive_can_timeout_or_stop():
+    class WaitingWebSocket:
+        async def recv(self):
+            await asyncio.Future()
+
+    timed_out = NetworkClient("ws://localhost:1", "Alice", "secret")
+    with pytest.raises(asyncio.TimeoutError):
+        asyncio.run(
+            timed_out._transport._recv_or_stop(WaitingWebSocket(), 0.01)
+        )
+
+    stopped = NetworkClient("ws://localhost:1", "Alice", "secret")
+    stopped._transport._stop_requested.set()
+    with pytest.raises(StopRequested):
+        asyncio.run(
+            stopped._transport._recv_or_stop(WaitingWebSocket(), 0.1)
+        )
+
+
+def test_network_client_room_error_helpers_validate_request_ids():
+    client = NetworkClient("ws://localhost:1", "Alice", "secret")
+    lobby = client._transport._lobby
+    assert not lobby._recover_lobby_error("ROOM_CREATED req AB12", "req")
+    with pytest.raises(ConnectionError, match="room_request_id_mismatch"):
+        lobby._recover_lobby_error(
+            encode_error("another", "room_not_found"),
+            "expected",
+        )
+
+    assert not lobby._recover_waiting_room_error(
+        "ROOM_CANCELLED req AB12",
+        "req",
+    )
+    with pytest.raises(ConnectionError, match="room_request_id_mismatch"):
+        lobby._recover_waiting_room_error(
+            encode_error("another", "room_not_found"),
+            "expected",
+        )
+    assert lobby._recover_waiting_room_error(
+        encode_error("expected", "room_not_found"),
+        "expected",
+    )
+    assert client.lobby_error == "room_not_found"
+
+
+@pytest.mark.parametrize(
+    "response,reason",
+    [
+        (
+            SimpleNamespace(
+                request_id="another",
+                kind="ROOM_CREATED",
+                room_code="AB12",
+            ),
+            "room_request_id_mismatch",
+        ),
+        (
+            SimpleNamespace(
+                request_id="expected",
+                kind="ROOM_JOINED",
+                room_code="AB12",
+            ),
+            "unexpected_room_response",
+        ),
+        (
+            SimpleNamespace(
+                request_id="expected",
+                kind="ROOM_CREATED",
+                room_code="CD34",
+            ),
+            "room_code_mismatch",
+        ),
+    ],
+)
+def test_network_client_validates_room_confirmation(response, reason):
+    with pytest.raises(ConnectionError, match=reason):
+        LobbySession._validate_room_response(
+            response,
+            "expected",
+            "ROOM_CREATED",
+            "AB12",
+        )
+
+
+def test_network_client_rejects_unexpected_internal_lobby_actions():
+    class WaitingWebSocket:
+        async def recv(self):
+            await asyncio.Future()
+
+    client = NetworkClient("ws://localhost:1", "Alice", "secret")
+    client._transport._session_token = "session-token"
+    client._transport._lobby.set_initial_action(LobbyAction(
+        LobbyActionKind.CANCEL_ROOM,
+        "AB12",
+    ))
+
+    with pytest.raises(RuntimeError, match="UNEXPECTED_LOBBY_ACTION"):
+        asyncio.run(client._transport._lobby.run(SimpleNamespace()))
+
+    waiting = NetworkClient("ws://localhost:1", "Alice", "secret")
+    waiting._transport._lobby._actions.put_nowait(
+        LobbyAction(LobbyActionKind.MATCHMAKE)
+    )
+    with pytest.raises(RuntimeError, match="UNEXPECTED_ROOM_WAIT_ACTION"):
+        asyncio.run(
+            waiting._transport._lobby._wait_in_created_room(
+                WaitingWebSocket(),
+                "AB12",
+            )
+        )
+
+
+def test_network_client_recovers_from_room_request_rejections(monkeypatch):
+    class DelayedClientWebSocket(_FakeClientWebSocket):
+        async def recv(self):
+            await asyncio.sleep(0.01)
+            return await super().recv()
+
+    monkeypatch.setattr(
+        lobby_session_module.uuid,
+        "uuid4",
+        lambda: SimpleNamespace(hex="fixed"),
+    )
+    creator = NetworkClient("ws://localhost:1", "Alice", "secret")
+    creator._transport._session_token = "session-token"
+    rejected_create = _FakeClientWebSocket([
+        encode_error("create-room-fixed", "room_limit_reached"),
+    ])
+    assert asyncio.run(
+        creator._transport._lobby._create_room_and_wait(rejected_create)
+    ) is None
+    assert creator.lobby_error == "room_limit_reached"
+
+    creator._transport._lobby._actions.put_nowait(
+        LobbyAction(LobbyActionKind.CANCEL_ROOM, "AB12")
+    )
+    rejected_cancel = DelayedClientWebSocket([
+        encode_error("cancel-room-fixed", "room_not_owned"),
+        "CONFIG_ACCEPTED req {}",
+        "STATE {}",
+    ])
+    admission = asyncio.run(
+        creator._transport._lobby._wait_in_created_room(
+            rejected_cancel,
+            "AB12",
+        )
+    )
+    assert admission == ("CONFIG_ACCEPTED req {}", "STATE {}")
+    assert creator.lobby_error == "room_not_owned"
+
+
 @pytest.mark.parametrize(
     "response,reason",
     [
@@ -653,16 +885,20 @@ def test_network_client_rejects_mismatched_auth_request_id(
     reason,
 ):
     websocket = _FakeClientWebSocket([response])
-    monkeypatch.setattr(network_client_module, "connect", lambda *_args, **_kwargs: websocket)
     monkeypatch.setattr(
-        network_client_module.uuid,
+        websocket_transport_module,
+        "connect",
+        lambda *_args, **_kwargs: websocket,
+    )
+    monkeypatch.setattr(
+        websocket_transport_module.uuid,
         "uuid4",
         lambda: SimpleNamespace(hex="fixed"),
     )
     client = NetworkClient("ws://localhost:1", "Alice", "secret")
 
     with pytest.raises(ConnectionError, match=reason):
-        asyncio.run(client._run_connection())
+        asyncio.run(client._transport._run_connection())
 
 
 @pytest.mark.parametrize(
@@ -696,19 +932,19 @@ def test_network_client_handles_join_rejections(
     )
     websocket = _FakeClientWebSocket([auth, join_response])
     monkeypatch.setattr(
-        network_client_module,
+        websocket_transport_module,
         "connect",
         lambda *_args, **_kwargs: websocket,
     )
     monkeypatch.setattr(
-        network_client_module.uuid,
+        websocket_transport_module.uuid,
         "uuid4",
         lambda: SimpleNamespace(hex="fixed"),
     )
     client = NetworkClient("ws://localhost:1", "Alice", "secret")
 
     with pytest.raises(error_type, match=reason):
-        asyncio.run(client._run_connection())
+        asyncio.run(client._transport._run_connection())
 
 
 def test_network_client_reconnect_rejection_becomes_terminal_failure(
@@ -718,17 +954,17 @@ def test_network_client_reconnect_rejection_becomes_terminal_failure(
         encode_error("join-fixed", "invalid_session_token"),
     ])
     monkeypatch.setattr(
-        network_client_module,
+        websocket_transport_module,
         "connect",
         lambda *_args, **_kwargs: websocket,
     )
     monkeypatch.setattr(
-        network_client_module.uuid,
+        websocket_transport_module.uuid,
         "uuid4",
         lambda: SimpleNamespace(hex="fixed"),
     )
     client = NetworkClient("ws://localhost:1", "Alice", "secret")
-    client._auth_response = AuthResponse(
+    client._transport._auth_response = AuthResponse(
         "login-fixed",
         1,
         "Alice",
@@ -736,13 +972,13 @@ def test_network_client_reconnect_rejection_becomes_terminal_failure(
         "session-token",
         20.0,
     )
-    client._session_token = "session-token"
+    client._transport._session_token = "session-token"
 
     with pytest.raises(
         network_client_module.ReconnectFailedError,
         match="invalid_session_token",
     ):
-        asyncio.run(client._supervise_reconnects())
+        asyncio.run(client._transport._supervise_reconnects())
 
 
 def test_network_client_propagates_reader_task_failure(monkeypatch):
@@ -755,16 +991,20 @@ def test_network_client_propagates_reader_task_failure(monkeypatch):
         [auth, config, state],
         incoming=[b"binary-message"],
     )
-    monkeypatch.setattr(network_client_module, "connect", lambda *_args, **_kwargs: websocket)
     monkeypatch.setattr(
-        network_client_module.uuid,
+        websocket_transport_module,
+        "connect",
+        lambda *_args, **_kwargs: websocket,
+    )
+    monkeypatch.setattr(
+        websocket_transport_module.uuid,
         "uuid4",
         lambda: SimpleNamespace(hex="fixed"),
     )
     client = NetworkClient("ws://localhost:1", "Alice", "secret")
 
     with pytest.raises(TypeError, match="INCOMING_MESSAGE_NOT_TEXT"):
-        asyncio.run(client._run_connection())
+        asyncio.run(client._transport._run_connection())
 
 
 def test_script_parser_rejects_missing_sections_and_unknown_commands():

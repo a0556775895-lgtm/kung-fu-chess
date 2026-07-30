@@ -18,7 +18,7 @@ GAME_OVER_WHITE_WIN_IMAGE_PATH = (
     Path("view") / "asset" / "game_over_white_win.png"
 )
 GAME_OVER_BLACK_WIN_IMAGE_PATH = (
-    Path("view") / "asset" / "game_over_black_win.png.png"
+    Path("view") / "asset" / "game_over_black_win.png"
 )
 
 PIECE_KINDS = ("P", "N", "B", "R", "Q", "K")
