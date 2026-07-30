@@ -2,10 +2,12 @@
 
 from boardio.board_factory import STANDARD_GAME_CONFIG
 from client.transport.connection_state import ConnectionState, ConnectionStatus
-from client.transport.websocket_transport import (
+from client.transport.errors import (
     AuthenticationRejectedError,
     MatchmakingTimeoutError,
     ReconnectFailedError,
+)
+from client.transport.websocket_transport import (
     WebSocketTransport,
 )
 

@@ -19,6 +19,7 @@ from networking.protocols.room import (
 )
 
 from client.transport.connection_state import ConnectionState
+from client.transport.errors import MatchmakingTimeoutError
 
 
 class StopRequested(Exception):
@@ -52,6 +53,7 @@ class LobbySession:
         self._error = None
         self._can_cancel_room = False
         self._initial_action = LobbyAction(LobbyActionKind.MATCHMAKE)
+        self._recover_match_timeout = False
 
     @property
     def room_code(self) -> str | None:
@@ -68,6 +70,7 @@ class LobbySession:
     def set_initial_action(self, action: LobbyAction | None) -> None:
         """Choose whether startup stops in the lobby or enters matchmaking."""
         self._initial_action = action
+        self._recover_match_timeout = action is None
 
     def start_matchmaking(self) -> None:
         """Ask the authenticated lobby to enter rating-based matchmaking."""
@@ -127,10 +130,17 @@ class LobbySession:
                 self._transport._set_state(
                     ConnectionState.WAITING_FOR_MATCH
                 )
-                return await self._transport._join(
-                    websocket,
-                    timeout=self._transport._match_timeout,
-                )
+                try:
+                    return await self._transport._join(
+                        websocket,
+                        timeout=self._transport._match_timeout,
+                    )
+                except MatchmakingTimeoutError:
+                    if not self._recover_match_timeout:
+                        raise
+                    self.set_lobby("match_timeout")
+                    action = None
+                    continue
 
             if action.kind is LobbyActionKind.CREATE_ROOM:
                 self._transport._set_state(ConnectionState.WAITING_IN_ROOM)

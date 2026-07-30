@@ -162,6 +162,22 @@ def test_lobby_controller_returns_create_error_to_menu():
     assert controller.view_state.error == "room_limit_reached"
 
 
+def test_lobby_controller_shows_friendly_match_timeout():
+    network = _FakeLobbyNetwork()
+    controller = LobbyController(network)
+    controller.handle_action(LobbyAction.START)
+    controller.handle_action(LobbyAction.QUICK_MATCH)
+    network.state = ConnectionState.LOBBY
+    network.lobby_error = "match_timeout"
+
+    controller.update()
+
+    assert controller.view_state.screen is LobbyScreen.MENU
+    assert controller.view_state.error == (
+        "No opponent found. Please try again."
+    )
+
+
 def test_lobby_controller_keeps_room_visible_when_cancel_is_rejected():
     network = _FakeLobbyNetwork()
     controller = LobbyController(network)

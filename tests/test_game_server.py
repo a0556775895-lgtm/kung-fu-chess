@@ -23,6 +23,13 @@ from networking.protocols.game import (
     parse_command_response,
     parse_config_response,
 )
+from networking.protocols.room import (
+    CancelRoomRequest,
+    CreateRoomRequest,
+    encode_cancel_room,
+    encode_create_room,
+    parse_room_response,
+)
 from server.transport.game_server import GameServer
 from server.game.game_registry import GameRegistry
 from server.services.session_registry import SessionRegistry
@@ -415,16 +422,42 @@ def test_game_server_returns_match_timeout_for_waiting_player(auth_service):
             async with connect(
                 f"ws://127.0.0.1:{server.bound_port}"
             ) as websocket:
-                await _send_join(websocket, "Alice", "join-timeout")
+                auth_response = await _send_join(
+                    websocket,
+                    "Alice",
+                    "join-timeout",
+                )
 
                 response = parse_command_response(await websocket.recv())
-                await asyncio.wait_for(websocket.wait_closed(), timeout=1.0)
 
                 assert not response.accepted
                 assert response.request_id == "join-timeout"
                 assert response.reason == "match_timeout"
-                assert websocket.close_code == 1008
                 assert server._matchmaker.waiting_count == 0
+
+                await websocket.send(
+                    encode_create_room(
+                        CreateRoomRequest(
+                            "create-after-timeout",
+                            auth_response.session_token,
+                            STANDARD_GAME_CONFIG,
+                        )
+                    )
+                )
+                created = parse_room_response(await websocket.recv())
+                assert created.kind == "ROOM_CREATED"
+
+                await websocket.send(
+                    encode_cancel_room(
+                        CancelRoomRequest(
+                            "cancel-after-timeout",
+                            auth_response.session_token,
+                            created.room_code,
+                        )
+                    )
+                )
+                cancelled = parse_room_response(await websocket.recv())
+                assert cancelled.kind == "ROOM_CANCELLED"
         finally:
             await server.close()
 

@@ -48,6 +48,9 @@ from server.services.auth import AuthError
 from server.transport.connection_io import run_connection_io
 
 
+_RETRY_LOBBY = object()
+
+
 class GameServer:
     """Own the WebSocket listener and provide explicit start/stop operations."""
 
@@ -269,11 +272,14 @@ class GameServer:
                 "JOIN_ROOM",
                 "CANCEL_ROOM",
             }:
-                return await self._handle_matchmaking_join(
+                result = await self._handle_matchmaking_join(
                     connection,
                     session,
                     message,
                 )
+                if result is _RETRY_LOBBY:
+                    continue
+                return result
 
             try:
                 request = parse_room_request(message)
@@ -356,8 +362,7 @@ class GameServer:
             await connection.send(
                 encode_error(join_request.request_id, "match_timeout")
             )
-            await connection.close(code=1008, reason="match_timeout")
-            return None
+            return _RETRY_LOBBY
         if unexpected_message is not None:
             await connection.send(
                 encode_error(join_request.request_id, "unexpected_lobby_message")

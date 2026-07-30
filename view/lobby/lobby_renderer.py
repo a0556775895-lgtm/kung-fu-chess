@@ -69,10 +69,15 @@ class LobbyRenderer:
             )
 
         if state.error:
+            error_center = {
+                LobbyScreen.MENU: (480, 615),
+                LobbyScreen.JOIN_ROOM: (480, 350),
+                LobbyScreen.WAITING_FOR_ROOM: (480, 420),
+            }.get(state.screen, (480, 615))
             self._draw_centered(
                 canvas.img,
                 state.error,
-                center=(480, 375),
+                center=error_center,
                 font_scale=0.55,
                 color=(40, 40, 210),
                 thickness=2,

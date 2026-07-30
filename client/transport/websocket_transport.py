@@ -12,6 +12,11 @@ from websockets.exceptions import ConnectionClosed
 
 from boardio.board_factory import STANDARD_GAME_CONFIG
 from client.transport.connection_state import ConnectionState, ConnectionStatus
+from client.transport.errors import (
+    AuthenticationRejectedError,
+    MatchmakingTimeoutError,
+    ReconnectFailedError,
+)
 from client.transport.lobby_session import (
     LobbyAction,
     LobbyActionKind,
@@ -33,22 +38,6 @@ from networking.protocols.game import (
     parse_command_response,
     parse_config_response,
 )
-
-
-class AuthenticationRejectedError(ConnectionError):
-    """The server refused registration or login during the handshake."""
-
-    def __init__(self, reason: str):
-        super().__init__(reason)
-        self.reason = reason
-
-
-class MatchmakingTimeoutError(TimeoutError):
-    """No compatible opponent was found before the server queue deadline."""
-
-
-class ReconnectFailedError(ConnectionError):
-    """The active game session could not be restored inside its grace period."""
 
 
 class _ReconnectRejectedError(ConnectionError):

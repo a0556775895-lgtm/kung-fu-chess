@@ -8,6 +8,11 @@ from view.lobby.lobby_state import (
 )
 
 
+_LOBBY_ERROR_MESSAGES = {
+    "match_timeout": "No opponent found. Please try again.",
+}
+
+
 class LobbyController:
     """Own pre-game UI state without rendering or speaking WebSocket."""
 
@@ -50,7 +55,10 @@ class LobbyController:
             self._handled_lobby_error = None
         elif lobby_error != self._handled_lobby_error:
             self._handled_lobby_error = lobby_error
-            self._error = lobby_error
+            self._error = _LOBBY_ERROR_MESSAGES.get(
+                lobby_error,
+                lobby_error,
+            )
             if self._operation == "join":
                 self._screen = LobbyScreen.JOIN_ROOM
             elif (

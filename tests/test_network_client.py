@@ -421,6 +421,41 @@ def test_network_client_reports_matchmaking_timeout(auth_service):
     asyncio.run(scenario())
 
 
+def test_network_client_recovers_to_lobby_after_interactive_match_timeout(
+    auth_service,
+):
+    async def scenario():
+        server = GameServer(
+            port=0,
+            auth_service=auth_service,
+            match_timeout_seconds=0.01,
+            room_code_factory=lambda: "AB12",
+        )
+        await server.start()
+        client = None
+        try:
+            client = await _authenticate_client(server, "Alice")
+            client.start_matchmaking()
+            await _wait_for_client_state(client, ConnectionState.LOBBY)
+
+            assert client.lobby_error == "match_timeout"
+            assert client.failure is None
+
+            client.create_room()
+            deadline = asyncio.get_running_loop().time() + 2.0
+            while client.room_code != "AB12":
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise TimeoutError("room was not created after timeout")
+                await asyncio.sleep(0.01)
+            client.cancel_room()
+            await _wait_for_client_state(client, ConnectionState.LOBBY)
+        finally:
+            await _close_clients(client)
+            await server.close()
+
+    asyncio.run(scenario())
+
+
 def test_network_client_rejects_invalid_match_timeout():
     with pytest.raises(ValueError, match="INVALID_MATCH_TIMEOUT"):
         NetworkClient(
