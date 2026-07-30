@@ -36,6 +36,7 @@ class GameController:
 
         rejection = self._authorize(match, context, command)
         if rejection is not None:
+            self._record_command(match, context, command, rejection)
             return encode_error(command.request_id, rejection)
 
         if isinstance(command, MoveCommand):
@@ -46,10 +47,27 @@ class GameController:
             return encode_error(command.request_id, "unknown_command")
 
         if not result.is_accepted:
+            self._record_command(match, context, command, result.reason)
             return encode_error(command.request_id, result.reason)
 
+        self._record_command(match, context, command)
         match.broadcast_state()
         return encode_ok(command.request_id)
+
+    @staticmethod
+    def _record_command(match, context, command, rejection=None) -> None:
+        """Record command metadata without storing the raw wire message."""
+        match.record_activity(
+            (
+                "command_rejected"
+                if rejection is not None
+                else "command_accepted"
+            ),
+            request_id=command.request_id,
+            user_id=context.user_id,
+            command=type(command).__name__,
+            reason=rejection,
+        )
 
     @staticmethod
     def _authorize(match, context, command) -> str | None:

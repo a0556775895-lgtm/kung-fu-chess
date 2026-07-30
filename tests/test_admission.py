@@ -258,3 +258,42 @@ def test_each_pair_gets_a_different_match_and_release_is_scoped():
     assert not first_pair["one"].match.has_connection(first_context)
     assert second_pair["three"].match.has_connection(second_context)
     admission.release(first_context)
+
+
+def test_admission_injects_one_activity_logger_per_match():
+    class ActivityLogger:
+        def record(self, *_args, **_kwargs):
+            pass
+
+        def close(self):
+            pass
+
+    created = []
+    activity_logger = ActivityLogger()
+    admission = GameAdmission(
+        GameRegistry(),
+        game_id_factory=lambda: "logged-game",
+        match_logger_factory=lambda game_id: (
+            created.append(game_id) or activity_logger
+        ),
+    )
+
+    results = admission.admit_pair(
+        _player("white", 1, "Alice", "join-white"),
+        _player("black", 2, "Bob", "join-black"),
+    )
+
+    assert created == ["logged-game"]
+    assert results["white"].match._activity_logger is activity_logger
+
+
+def test_admission_rejects_invalid_match_logger_factory():
+    try:
+        GameAdmission(
+            GameRegistry(),
+            match_logger_factory=object(),
+        )
+    except TypeError as exc:
+        assert str(exc) == "MATCH_LOGGER_FACTORY_NOT_CALLABLE"
+    else:
+        raise AssertionError("invalid match logger factory was accepted")

@@ -1,6 +1,7 @@
 """Async WebSocket listener, player connections, and authoritative server tick."""
 """שער הכניסה לשרת"""
 import asyncio
+import logging
 
 from websockets.exceptions import ConnectionClosed
 from websockets.asyncio.server import Server, ServerConnection, serve
@@ -49,6 +50,7 @@ from server.transport.connection_io import run_connection_io
 
 
 _RETRY_LOBBY = object()
+logger = logging.getLogger(__name__)
 
 
 class GameServer:
@@ -69,6 +71,7 @@ class GameServer:
         ),
         room_registry=None,
         room_code_factory=None,
+        match_logger_factory=None,
     ):
         if auth_service is None:
             raise TypeError("AUTH_SERVICE_REQUIRED")
@@ -86,6 +89,7 @@ class GameServer:
         self._admission = GameAdmission(
             self._registry,
             completion_service=completion_service,
+            match_logger_factory=match_logger_factory,
         )
         self._matchmaker = Matchmaker(
             self._admission.admit_pair,
@@ -152,6 +156,8 @@ class GameServer:
         server.close()
         await server.wait_closed()
         await self._reconnect.close()
+        for match in self._registry.values():
+            match.close()
         self._sessions.clear()
 
     async def _handle_connection(self, connection: ServerConnection) -> None:
@@ -184,6 +190,12 @@ class GameServer:
                     return
 
                 context = result.context
+                logger.info(
+                    "connection restored user_id=%s game_id=%s role=%s",
+                    session.user_id,
+                    context.game_id,
+                    context.role.value,
+                )
                 await run_connection_io(context, self._controller)
                 return  # pragma: no cover - connection loop exits by ConnectionClosed
 
@@ -206,6 +218,11 @@ class GameServer:
                     auth_request.password,
                 )
             except AuthError as exc:
+                logger.warning(
+                    "authentication rejected request_id=%s reason=%s",
+                    auth_request.request_id,
+                    exc.reason,
+                )
                 await connection.send(
                     encode_error(auth_request.request_id, exc.reason)
                 )
@@ -218,12 +235,22 @@ class GameServer:
                 user.rating,
             )
             if session is None:
+                logger.warning(
+                    "authentication rejected request_id=%s "
+                    "reason=user_already_connected",
+                    auth_request.request_id,
+                )
                 await connection.send(
                     encode_error(auth_request.request_id, "user_already_connected")
                 )
                 await connection.close(code=1008, reason="user_already_connected")
                 return
 
+            logger.info(
+                "authentication accepted user_id=%s username=%s",
+                session.user_id,
+                session.username,
+            )
             await connection.send(
                 encode_auth_ok(
                     AuthResponse(
@@ -242,11 +269,23 @@ class GameServer:
             context = await self._admit_authenticated(connection, session)
             if context is None:
                 return
+            logger.info(
+                "connection admitted user_id=%s game_id=%s role=%s",
+                session.user_id,
+                context.game_id,
+                context.role.value,
+            )
             await run_connection_io(context, self._controller)
         except ConnectionClosed:
             pass
         finally:
             if context is not None:
+                logger.info(
+                    "connection closed user_id=%s game_id=%s role=%s",
+                    context.user_id,
+                    context.game_id,
+                    context.role.value,
+                )
                 if self._closing:
                     self._admission.release(context)
                     self._sessions.release(session.token)

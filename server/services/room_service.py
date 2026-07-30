@@ -2,6 +2,7 @@
 
 import asyncio
 from dataclasses import dataclass
+import logging
 import secrets
 import string
 
@@ -14,6 +15,7 @@ from server.services.session_registry import SessionState
 _ROOM_CODE_ALPHABET = string.ascii_uppercase + string.digits
 _ROOM_CODE_LENGTH = 6
 _MAX_CODE_ATTEMPTS = 10
+logger = logging.getLogger(__name__)
 
 
 class RoomServiceError(ValueError):
@@ -84,6 +86,11 @@ class RoomService:
                 future,
             )
             creator.session.state = SessionState.WAITING_IN_ROOM
+            logger.info(
+                "room created room_code=%s creator_user_id=%s",
+                room.room_code,
+                creator.session.user_id,
+            )
             return RoomWait(room, future)
 
     async def join(
@@ -111,9 +118,16 @@ class RoomService:
                 if player.session.state is not SessionState.LOBBY:
                     raise RoomServiceError("session_not_available")
                 try:
-                    return self._spectator_factory(player, room.match)
+                    result = self._spectator_factory(player, room.match)
                 except ValueError as exc:
                     raise RoomServiceError(str(exc).lower()) from exc
+                logger.info(
+                    "spectator joined room_code=%s user_id=%s game_id=%s",
+                    room_code,
+                    player.session.user_id,
+                    room.match.game_id,
+                )
+                return result
 
             if waiting.creator.session.token == player.session.token:
                 raise RoomServiceError("cannot_join_own_room")
@@ -135,6 +149,14 @@ class RoomService:
 
             del self._waiting_by_code[room_code]
             waiting.future.set_result(creator_result)
+            logger.info(
+                "room match started room_code=%s game_id=%s "
+                "white_user_id=%s black_user_id=%s",
+                room_code,
+                match.game_id,
+                waiting.creator.session.user_id,
+                player.session.user_id,
+            )
             return player_result
 
     async def cancel(self, room_code: str, requester_token: str) -> Room:
@@ -149,6 +171,11 @@ class RoomService:
             self._registry.remove(room_code)
             waiting.creator.session.state = SessionState.LOBBY
             waiting.future.set_exception(RoomCancelledError("room_cancelled"))
+            logger.info(
+                "room cancelled room_code=%s creator_user_id=%s",
+                room_code,
+                waiting.creator.session.user_id,
+            )
             return waiting.room
 
     async def close(self) -> None:

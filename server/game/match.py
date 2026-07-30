@@ -21,6 +21,7 @@ class Match:
         *,
         match_instance_id=None,
         completion_service=None,
+        activity_logger=None,
     ):
         """Create one game boundary and attach its per-match event broadcaster."""
         if not game_id:
@@ -42,12 +43,14 @@ class Match:
         self._result = None
         self._disconnected_colors = set()
         self._completion_service = completion_service
+        self._activity_logger = activity_logger
         self.broadcaster = ServerBroadcaster(
             game_id=game_id,
             bus=engine.bus,
             connections=self.connections,
             next_sequence=self.next_sequence,
             server_time_ms=self.server_time_ms,
+            activity_recorder=self.record_activity,
         )
 
     def add_connection(self, context) -> None:
@@ -77,10 +80,23 @@ class Match:
             if context.username is not None:
                 self._player_usernames[context.color] = context.username
         self._connections[context.connection_id] = context
+        self.record_activity(
+            "connection_joined",
+            user_id=context.user_id,
+            role=context.role.value,
+            color=str(context.color) if context.color is not None else None,
+        )
 
     def remove_connection(self, connection_id: str):
         """Detach a connection, returning it when it was registered."""
-        return self._connections.pop(connection_id, None)
+        context = self._connections.pop(connection_id, None)
+        if context is not None:
+            self.record_activity(
+                "connection_left",
+                user_id=context.user_id,
+                role=context.role.value,
+            )
+        return context
 
     def has_connection(self, context) -> bool:
         """Check identity, not only id equality, to reject forged contexts."""
@@ -98,6 +114,25 @@ class Match:
     def server_time_ms(self) -> int:
         """Read the single authoritative clock from the engine snapshot."""
         return self.engine.snapshot().server_time_ms
+
+    def record_activity(
+        self,
+        event_type: str,
+        *,
+        request_id: str | None = None,
+        user_id: int | None = None,
+        **details,
+    ) -> None:
+        """Write one match-scoped activity entry when logging is configured."""
+        if self._activity_logger is None:
+            return
+        self._activity_logger.record(
+            event_type,
+            server_time_ms=self.server_time_ms(),
+            request_id=request_id,
+            user_id=user_id,
+            **details,
+        )
 
     def snapshot_for(self, context, sequence: int | None = None):
         """Add connection-specific role, color and routing metadata to a snapshot."""
@@ -201,8 +236,16 @@ class Match:
                 result=result,
             )
         self._result = result
+        self.record_activity(
+            "game_finished",
+            winner_color=str(result.winner_color),
+            reason=result.reason.value,
+            duration_ms=result.duration_ms,
+        )
         self.broadcast_state()
         self.broadcaster.publish_game_over()
+        if self._activity_logger is not None:
+            self._activity_logger.close()
         return True
 
     @property
@@ -222,7 +265,10 @@ class Match:
 
     def close(self) -> None:
         """Unsubscribe the broadcaster and release all connection references."""
+        self.record_activity("match_closed")
         self.broadcaster.close()
+        if self._activity_logger is not None:
+            self._activity_logger.close()
         self._connections.clear()
         self._player_user_ids.clear()
         self._player_usernames.clear()

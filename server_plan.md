@@ -99,11 +99,13 @@ kung-fu-chess/
 │   │   ├── database.py                  חיבור sqlite3 + init_schema()
 │   │   ├── repository.py                UserRepository + GameRepository
 │   │   └── unit_of_work.py               commit/rollback וסגירת חיבור בבעלות הפעולה
-│   ├── logging_config.py              [חדש F] לוגים מובנים עם game_id/request_id/user_id,
-│   │                                     קובץ מתחלף נפרד לכל משחק וסגירת handler בניקוי Match
+│   ├── logging/                       [חדש F] תשתית לוגים ייעודית לשרת
+│   │   └── match_activity_logger.py     game_id/request_id/user_id וסגירת handler
 │   ├── config.py                      [חדש B] TICK_MS, PORT, ELO_K, DISCONNECT_GRACE_S, MATCH_TIMEOUT_S
 │   ├── main.py                        [חדש B] נקודת כניסה: python -m server.main
 │   └── dto.py                         [חדש D] UserDTO (GameSnapshot/PieceSnapshot כבר DTO משלהם)
+│
+├── app_logging.py                    [חדש F] rotation, redaction ותצורת handlers משותפת
 │
 ├── input/                            קיים — Controller של קלט-משתמש (לא BLL, לא ה-Controller החדש)
 │   ├── controller.py                  ללא שינוי (Board עדיין מ-model, אין import חדש כי model/ לא זז)
@@ -284,10 +286,8 @@ NetworkClient מקבל                                                    Networ
 - **F1 — תשתית חדרים: הושלם ואושר.** נוסף מודל `Room` שמחזיק קוד, יוצרת, `GameConfig` והפניה אופציונלית לאותו `Match`; ‏`RoomStatus` נגזר ממצב החדר והמשחק. `RoomRegistry` מספק מיפוי בזיכרון לפי קוד. `SessionState` מונע פעילות כפולה בין `LOBBY`, ‏`QUEUED`, ‏`WAITING_IN_ROOM`, ‏`IN_GAME` ו-`SPECTATING`. ‏`AdmissionPlayer` הופרד מה-Matchmaker, וחיפוש ה-ELO נשאר חיפוש בדליי דירוג מוגבלים וברורים. כל 463 בדיקות הפרויקט עוברות וכיסוי הלוגיקה הנמדדת נשאר 100%.
 - **F2 — פרוטוקול ושירות חדרים: הושלם ואושר.** נוסף `networking/protocols/room.py` עבור `CREATE_ROOM`, ‏`JOIN_ROOM` ו-`CANCEL_ROOM`, ונוסף `RoomService` שמאתר חדרים ב-`RoomRegistry`, מנהל המתנה וביטול ומעביר זוג מאושר ל-`GameAdmission.admit_pair()` הקיים. יצירת חדר משאירה את היוצרת ב-`WAITING_IN_ROOM`; רק הצטרפות השחקנית השנייה יוצרת `Match`, מקצה לבן/שחור ומעבירה את שתיהן ל-`IN_GAME`. ‏`GameServer` תומך גם ב-JOIN הרגיל דרך Matchmaker וגם בפקודות החדרים דרך לולאת lobby משותפת. כל 505 בדיקות הפרויקט עוברות וכיסוי הלוגיקה הנמדדת נשאר 100%.
 - **F3 — Lobby גרפי: הושלם ואושר.** לאחר האימות מוצגים מסכי Welcome/Menu/Create/Join/Waiting בחלון OpenCV הקיים, ללא Tkinter. הלקוחה יכולה לבצע Quick Match, ליצור חדר, להעתיק ולהדביק קוד חדר, להצטרף לחדר ולחזור לתפריט לאחר `match_timeout`.
-- **F4 — צופות: מומש ונבדק, ממתין לאישור.** `JOIN_ROOM` לחדר פעיל מצרף את המשתמשת לאותו `Match` עם `ConnectionRole.SPECTATOR`, ללא צבע וללא מקום שחקנית. הצופה מקבלת `STATE`/`EVENT`, מוצגת במצב קריאה בלבד עם קוד החדר, וחסומה מ-`MOVE`/`JUMP` גם בלקוחה וגם בשרת. ניתוק וחיבור מחדש של צופה אינם משהים את המשחק ואינם משפיעים על התוצאה או על ELO. כל 550 הבדיקות עוברות וכיסוי הלוגיקה הנמדדת הוא 100%.
-- **F5 — לוגים: טרם מומש.**
-- לוגים: `server/main.py`→`server.log`; `client/main.py`→`client_<username>.log` (נקבע אחרי login, כדי ששני לקוחות מקומיים לא ידרסו קובץ זה של זה).
-- בנוסף, לכל `Match` ייכתב לוג פעילות מתחלף משלו (`logs/games/game_<game_id>.log`) עם `game_id`, ‏`request_id`, ‏`user_id`, סוג אירוע וזמן שרת. ה-handler נסגר עם ניקוי המשחק ונקבעת מדיניות rotation/retention כדי למנוע גדילה בלתי מוגבלת.
+- **F4 — צופות: הושלם ואושר.** `JOIN_ROOM` לחדר פעיל מצרף את המשתמשת לאותו `Match` עם `ConnectionRole.SPECTATOR`, ללא צבע וללא מקום שחקנית. הצופה מקבלת `STATE`/`EVENT`, מוצגת במצב קריאה בלבד עם קוד החדר, וחסומה מ-`MOVE`/`JUMP` גם בלקוחה וגם בשרת. ניתוק וחיבור מחדש של צופה אינם משהים את המשחק ואינם משפיעים על התוצאה או על ELO.
+- **F5 — לוגים: הושלם ואושר.** השרת כותב ל־`logs/server.log`, כל לקוחה ל־`logs/clients/client_<username>.log`, וכל `Match` ל־`logs/games/game_<game_id>.log`. לוג משחק כולל `game_id`, ‏`request_id`, ‏`user_id`, סוג אירוע וזמן שרת; ה-handler נסגר בסיום המשחק או בכיבוי השרת. כל הקבצים משתמשים ב־rotation של 1MB ושלושה גיבויים, אינם מכילים הודעות אימות גולמיות ומפעילים redaction נוסף לסיסמאות ו־session tokens. כל 563 הבדיקות עוברות וכיסוי הלוגיקה הנמדדת הוא 100%.
 
 ## 6. אסטרטגיית בדיקות
 
@@ -362,7 +362,7 @@ NetworkClient מקבל                                                    Networ
 | C — Username Login | הושלם ואושר — C1–C3 | login בשם משתמש, הקצאת White/Black, הצגת שמות בלוח והודעת `server_full` מאומתים מקצה לקצה |
 | D — Auth + SQLite + ELO | הושלם ואושר — D1–D6 | register/login מאובטחים; rating מתחיל ב-1200; סיום משחק מעדכן DB ו-ELO פעם אחת ובטרנזקציה אחת |
 | E — Matchmaking + Disconnect | הושלם ואושר — E1–E4 | Session tokens, שידוך לפי דירוג, השהיית משחק בזמן ניתוק, הפסד `DISCONNECT`, reconnect אוטומטי באותו משחק ותצוגת countdown לשתי השחקניות מומשו ונבדקו. הלקוחה חוזרת עם `JOIN` וה־token הקיים, ללא פקודת reconnect נפרדת וללא יצירת חלון או Proxy חדשים |
-| F — Rooms + Spectators + Logs | בתהליך — F1–F3 הושלמו ואושרו; F4 מומש וממתין לאישור | החדרים, ה-Lobby הגרפי והצופות מומשו; 550 בדיקות עוברות ב-100% כיסוי. לאחר אישור F4 יישאר F5 — לוגים |
+| F — Rooms + Spectators + Logs | הושלם ואושר — F1–F5 | חדרים, Lobby גרפי, צופות ולוגים מתחלפים מומשו; 563 בדיקות עוברות ב-100% כיסוי |
 
 ## 13. קריטריוני Release סופיים
 

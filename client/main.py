@@ -3,6 +3,12 @@
 import argparse
 import logging
 
+from app_logging import (
+    close_managed_handlers,
+    configure_rotating_logger,
+    safe_filename_component,
+)
+from client import config as client_config
 from client.cli_auth import AuthAction, AuthCredentials, prompt_credentials
 from client.lobby_controller import LobbyController
 from client.network_client import (
@@ -36,12 +42,22 @@ def run_client(
         register=credentials.action is AuthAction.REGISTER,
     )
     network_client.authenticate()
+    logger.info(
+        "client authenticated user_id=%s username=%s",
+        network_client.auth_response.user_id,
+        network_client.auth_response.username,
+    )
     try:
         lobby = LobbyDisplay(LobbyController(network_client))
         if not lobby.run():
             return
 
         proxy = RemoteGameEngineProxy(network_client)
+        logger.info(
+            "game view opened game_id=%s role=%s",
+            network_client.initial_state.game_id,
+            network_client.initial_state.role,
+        )
         event_adapter = NetworkEventAdapter()
 
         def update_remote_game(_dt_ms: int) -> None:
@@ -94,6 +110,7 @@ def run_client(
         )
         display.run()
     finally:
+        logger.info("client connection closing username=%s", credentials.username)
         network_client.close()
 
 
@@ -106,17 +123,23 @@ def main(argv=None) -> None:
         help=f"WebSocket server URI (default: {DEFAULT_SERVER_URI})",
     )
     args = parser.parse_args(argv)
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
     credentials = prompt_credentials()
+    safe_username = safe_filename_component(credentials.username)
+    application_logger = configure_rotating_logger(
+        "client",
+        client_config.LOG_DIRECTORY / f"client_{safe_username}.log",
+        max_bytes=client_config.LOG_MAX_BYTES,
+        backup_count=client_config.LOG_BACKUP_COUNT,
+        include_console=True,
+    )
     try:
         run_client(credentials, args.server)
     except AuthenticationRejectedError as exc:
         logger.error("authentication rejected: %s", exc.reason)
     except KeyboardInterrupt:
         logger.info("client stopped")
+    finally:
+        close_managed_handlers(application_logger)
 
 
 if __name__ == "__main__":  # pragma: no cover

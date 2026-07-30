@@ -1,5 +1,7 @@
 """Composition tests for the graphical network-client entry point."""
 
+from types import SimpleNamespace
+
 import pytest
 
 import client.main as client_main
@@ -21,6 +23,14 @@ class _FakeNetworkClient:
         self.connection_status = ConnectionStatus(ConnectionState.CONNECTED)
         self.room_code = None
         self.failure = None
+        self.auth_response = SimpleNamespace(
+            user_id=1,
+            username=username,
+        )
+        self.initial_state = SimpleNamespace(
+            game_id="game-1",
+            role="PLAYER",
+        )
         self.instances.append(self)
 
     def authenticate(self):
@@ -153,10 +163,25 @@ def test_main_prompts_for_credentials_before_running_client(monkeypatch):
             server_uri=server_uri,
         ),
     )
+    monkeypatch.setattr(
+        client_main,
+        "configure_rotating_logger",
+        lambda namespace, path, **options: captured.update(
+            log_namespace=namespace,
+            log_path=path,
+            log_options=options,
+        ) or client_main.logging.getLogger("test-client"),
+    )
+    monkeypatch.setattr(
+        client_main,
+        "close_managed_handlers",
+        lambda logger: captured.update(closed_logger=logger.name),
+    )
 
     client_main.main(["--server", "ws://example.test:9000"])
 
-    assert captured == {
-        "credentials": credentials,
-        "server_uri": "ws://example.test:9000",
-    }
+    assert captured["credentials"] == credentials
+    assert captured["server_uri"] == "ws://example.test:9000"
+    assert captured["log_namespace"] == "client"
+    assert captured["log_path"].name == "client_Alice.log"
+    assert captured["closed_logger"] == "test-client"

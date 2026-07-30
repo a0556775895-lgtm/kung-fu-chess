@@ -493,7 +493,11 @@ def test_network_client_reconnects_same_session_after_socket_drop(auth_service):
 
             deadline = asyncio.get_running_loop().time() + 2.0
             restored = None
-            while restored is None:
+            while (
+                restored is None
+                or client.connection_status.state
+                is not ConnectionState.CONNECTED
+            ):
                 restored = next(
                     (
                         context
@@ -519,7 +523,11 @@ def test_network_client_reconnects_same_session_after_socket_drop(auth_service):
             await restored.websocket.close(code=1011, reason="second-test-drop")
             deadline = asyncio.get_running_loop().time() + 2.0
             restored_again = None
-            while restored_again is None:
+            while (
+                restored_again is None
+                or client.connection_status.state
+                is not ConnectionState.CONNECTED
+            ):
                 restored_again = next(
                     (
                         context

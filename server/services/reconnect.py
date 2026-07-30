@@ -1,6 +1,7 @@
 """Atomic restoration of disconnected sessions to persistent match seats."""
 
 import asyncio
+import logging
 
 from model.piece import PieceColor
 from server import config
@@ -8,6 +9,7 @@ from server.game.game_result import FinishReason, GameResult
 from server.services.session_registry import SessionState
 from server.transport.connection import ConnectionRole
 
+logger = logging.getLogger(__name__)
 
 class ReconnectError(ValueError):
     """A reconnect JOIN cannot be restored to a live match."""
@@ -71,6 +73,12 @@ class ReconnectService:
                 self._expire_after_grace(session.token),
                 name=f"reconnect-timeout-{session.user_id}",
             )
+            logger.info(
+                "connection retained user_id=%s game_id=%s role=%s",
+                session.user_id,
+                context.game_id,
+                context.role.value,
+            )
             return True
 
     async def restore(self, request, websocket):
@@ -113,6 +121,12 @@ class ReconnectService:
             if not is_spectator:
                 match.resume_for(session.color)
                 match.broadcaster.publish_player_reconnected(session.color)
+            logger.info(
+                "session restored user_id=%s game_id=%s role=%s",
+                session.user_id,
+                session.game_id,
+                result.context.role.value,
+            )
             return session, result
 
     async def close(self) -> None:
@@ -142,6 +156,11 @@ class ReconnectService:
                     self._sessions.release(token)
                     return
                 if session.state is SessionState.SPECTATING:
+                    logger.info(
+                        "spectator session expired user_id=%s game_id=%s",
+                        session.user_id,
+                        session.game_id,
+                    )
                     self._sessions.release(token)
                     return
                 if match.result is None:
@@ -155,6 +174,11 @@ class ReconnectService:
                         reason=FinishReason.DISCONNECT,
                         duration_ms=match.server_time_ms(),
                     ))
+                    logger.info(
+                        "player reconnect expired user_id=%s game_id=%s",
+                        session.user_id,
+                        session.game_id,
+                    )
                 self._sessions.release(token)
         except asyncio.CancelledError:
             return

@@ -49,6 +49,7 @@ class GameAdmission:
         connection_id_factory=None,
         game_id_factory=None,
         completion_service=None,
+        match_logger_factory=None,
     ):
         self._registry = registry
         self._connection_id_factory = (
@@ -56,6 +57,9 @@ class GameAdmission:
         )
         self._game_id_factory = game_id_factory or (lambda: uuid.uuid4().hex)
         self._completion_service = completion_service
+        if match_logger_factory is not None and not callable(match_logger_factory):
+            raise TypeError("MATCH_LOGGER_FACTORY_NOT_CALLABLE")
+        self._match_logger_factory = match_logger_factory
 
     @staticmethod
     def rejection_for(request: JoinRequest) -> str | None:
@@ -89,6 +93,11 @@ class GameAdmission:
             GameEngine(create_board(first.request.requested_config)),
             game_config=first.request.requested_config,
             completion_service=self._completion_service,
+            activity_logger=(
+                self._match_logger_factory(game_id)
+                if self._match_logger_factory is not None
+                else None
+            ),
         )
         self._registry.add(match)
 

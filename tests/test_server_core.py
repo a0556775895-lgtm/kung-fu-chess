@@ -75,6 +75,19 @@ def drain(context):
     return messages
 
 
+class _RecordingActivityLogger:
+    def __init__(self):
+        self.entries = []
+        self.closed = False
+
+    def record(self, event_type, **fields):
+        if not self.closed:
+            self.entries.append((event_type, fields))
+
+    def close(self):
+        self.closed = True
+
+
 def test_registry_add_get_remove_and_duplicate_protection():
     registry, match, _ = setup_match()
     assert registry.get("game-1") is match
@@ -117,6 +130,54 @@ def test_controller_accepts_authorized_move_and_broadcasts_state():
     assert len(state.active_motions) == 1
     assert state.active_motions[0].source.row == 7
     assert state.active_motions[0].destination.row == 6
+
+
+def test_match_activity_log_records_lifecycle_commands_and_game_over():
+    activity = _RecordingActivityLogger()
+    registry = GameRegistry()
+    match = Match("logged-game", make_engine(), activity_logger=activity)
+    registry.add(match)
+    context = make_context(
+        "logged-connection",
+        "logged-game",
+        user_id=7,
+        username="Alice",
+    )
+    match.add_connection(context)
+
+    accepted = GameController(registry).handle_message(
+        context,
+        "MOVE move-logged WRa1a2",
+    )
+    context.role = ConnectionRole.SPECTATOR
+    rejected = GameController(registry).handle_message(
+        context,
+        "JUMP jump-rejected WRa1",
+    )
+    match.finish(
+        GameResult(PieceColor.WHITE, FinishReason.RESIGN, 25)
+    )
+    match.close()
+
+    event_types = [event_type for event_type, _fields in activity.entries]
+    assert parse_command_response(accepted).accepted
+    assert parse_command_response(rejected).reason == "spectator_forbidden"
+    assert {
+        "connection_joined",
+        "motion",
+        "command_accepted",
+        "command_rejected",
+        "game_finished",
+        "game_over",
+    } <= set(event_types)
+    command_entry = next(
+        fields
+        for event_type, fields in activity.entries
+        if event_type == "command_accepted"
+    )
+    assert command_entry["request_id"] == "move-logged"
+    assert command_entry["user_id"] == 7
+    assert activity.closed
 
 
 def test_controller_accepts_jump_and_returns_correlated_response():

@@ -7,12 +7,21 @@ from networking.protocols.game import encode_event
 class ServerBroadcaster:
     """Per-match adapter from synchronous domain events to bounded client queues."""
 
-    def __init__(self, game_id, bus, connections, next_sequence, server_time_ms):
+    def __init__(
+        self,
+        game_id,
+        bus,
+        connections,
+        next_sequence,
+        server_time_ms,
+        activity_recorder=None,
+    ):
         """Subscribe only to the bus and connection provider of one Match."""
         self._game_id = game_id
         self._connections = connections
         self._next_sequence = next_sequence
         self._server_time_ms = server_time_ms
+        self._activity_recorder = activity_recorder
         self._cancellations = [
             bus.subscribe(MotionStarted, self._on_motion),
             bus.subscribe(JumpStarted, self._on_jump),
@@ -35,6 +44,11 @@ class ServerBroadcaster:
         }
 
     def _publish(self, payload: dict) -> None:
+        if self._activity_recorder is not None:
+            self._activity_recorder(
+                payload["type"].lower(),
+                sequence=payload["sequence"],
+            )
         message = encode_event(payload)
         for connection in self._connections():
             connection.enqueue(message)
