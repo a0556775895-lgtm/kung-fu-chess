@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from model.piece import PieceColor
+from networking.models.piece import PieceColor
 
 
 DEFAULT_K_FACTOR = 32

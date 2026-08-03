@@ -3,7 +3,7 @@
 import asyncio
 import logging
 
-from model.piece import PieceColor
+from networking.models.piece import PieceColor
 from server import config
 from server.game.game_result import FinishReason, GameResult
 from server.services.session_registry import SessionState

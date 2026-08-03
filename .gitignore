@@ -49,6 +49,8 @@ coverage.xml
 *.py.cover
 .hypothesis/
 .pytest_cache/
+DOCS/tests/temp/
+DOCS/tests/reports/
 cover/
 report.html
 game.log

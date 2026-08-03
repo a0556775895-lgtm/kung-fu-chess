@@ -3,7 +3,7 @@
 import argparse
 import logging
 
-from app_logging import (
+from networking.logging_utils import (
     close_managed_handlers,
     configure_rotating_logger,
     safe_filename_component,
@@ -18,9 +18,9 @@ from client.network_client import (
 )
 from client.network_event_adapter import NetworkEventAdapter
 from client.remote_game_engine_proxy import RemoteGameEngineProxy
-from view.display_manager import DisplayManager
-from view.lobby.lobby_display import LobbyDisplay
-from view.hud.connection_status.connection_status_renderer import (
+from client.view.display_manager import DisplayManager
+from client.view.lobby.lobby_display import LobbyDisplay
+from client.view.hud.connection_status.connection_status_renderer import (
     ConnectionNotice,
     ConnectionStatusRenderer,
 )

@@ -2,7 +2,7 @@
 
 משחק שחמט בזמן אמת: אין תורות, ושני הצדדים יכולים להזיז כלים בו-זמנית. כל תנועה נמשכת זמן בהתאם למרחק, ובזמן הזה היריב יכול להגיב, לנוע ולקפוץ.
 
-הפרויקט תומך גם במשחק מקומי וגם במשחק מרובה משתתפים בין שני לקוחות גרפיים המחוברים לשרת WebSocket סמכותי.
+הפרויקט פועל במבנה Multiplayer: שני לקוחות גרפיים מחוברים לשרת WebSocket סמכותי.
 
 ## תכונות עיקריות
 
@@ -27,14 +27,6 @@
 
 ```powershell
 pip install -r requirements.txt
-```
-
-## הרצת משחק מקומי
-
-המצב המקומי מפעיל את הלוח והמנוע באותו תהליך, ללא שרת:
-
-```powershell
-python main.py
 ```
 
 ## הרצת משחק מרובה משתתפים
@@ -98,36 +90,40 @@ STATE ראשוני
 ## מבנה הפרויקט
 
 ```text
-model/          ישויות ומצב משחק בסיסי
-rules/          חוקיות תנועה וחישובי מסלול
-realtime/       תנועות פעילות, זמן, הגעות והתנגשויות
-engine/         GameEngine והמצב הסמכותי של המשחק
-boardio/        יצירת לוחות, פתיחות ותצוגת לוח טקסטואלית
-bus/            הפצת אירועי משחק בתוך התהליך
-
-client/         הלקוח המרוחק
-  main.py       נקודת הכניסה ללקוח הגרפי
-  cli_auth.py   בחירת הרשמה/כניסה וקליטת סיסמה מוסתרת
-  network_client.py
-                חיבור WebSocket על thread נפרד
-  remote_game_engine_proxy.py
-                התאמת הודעות השרת לממשק שה-View צורך
+client/         הלקוח הגרפי
+  assets/       תמונות, ספרייטים וצלילים
+  input/        מיפוי קלט ו-InputController
+  transport/    חיבור WebSocket ומתאמי אירועים
+  view/         חלון OpenCV, אנימציה, לוח ו-HUD
 
 server/         השרת הסמכותי
-  transport/    WebSocket, חיבורים ותורי הודעות
-  game/         Match, הרשאות, קבלה למשחק ולולאת tick
+  boardio/      יצירת לוחות וטעינת קונפיגורציה
+  dal/          SQLite, repositories ו-DTOs
+  engine/       GameEngine
+  game/         Match, הרשאות ולולאת tick
+  models/       מצב הלוח והמשחק בצד השרת
+  realtime/     תנועות פעילות, הגעות והתנגשויות
+  rules/        חוקיות תנועה וחישובי מסלול
   services/     אימות משתמשים ושמות פעילים
-  dal/          SQLite, repositories וגבולות טרנזקציה
+  transport/    WebSocket, חיבורים ותורי הודעות
 
-networking/     חוזי רשת, parsing ו-serialization
-input/          תרגום פעולות עכבר לפקודות משחק
-view/           חלון OpenCV, אנימציה, לוח ו-HUD
-texttests/      תרחישי משחק טקסטואליים ללא GUI
-tests/          בדיקות יחידה ואינטגרציה
-tools/          כלי עזר ליצירת נכסים
+networking/     כל מה שמשותף ללקוח ולשרת
+  models/       מודלים משותפים וקונפיגורציית משחק
+  protocols/    חוזי תקשורת
+  serializers/  המרה להודעות רשת ומהן
+  event_bus.py  הפצת אירועים בתוך התהליך
+  events.py     אירועים משותפים
+
+DOCS/           תיעוד ובדיקות
+  config/       הגדרות כלי פיתוח וכיסוי
+  plans/        מסמכי תכנון
+  tests/        בדיקות יחידה, אינטגרציה ותרחישי טקסט
+  run_tests.ps1 הרצת הבדיקות עם כיסוי
 ```
 
-לפירוט ארכיטקטורת התצוגה ראו [view_architecture_spec.md](view_architecture_spec.md). לתוכנית הפיתוח המלאה ראו [server_plan.md](server_plan.md).
+בשורש המאגר נשארים רק ארבעת העצים האלה וקובצי הפרויקט הכלליים: `README.md`, ‏`CLAUDE.md`, ‏`requirements.txt` ו-`.gitignore`. קובצי runtime כגון מסד הנתונים, לוגים, מטמונים ודוחות בדיקה נוצרים בתוך התיקייה המתאימה ומוחרגים מ-Git.
+
+לפירוט ארכיטקטורת התצוגה ראו [client_view.md](DOCS/plans/client_view.md). לתוכנית הפיתוח המלאה ראו [server_plan.md](DOCS/plans/server_plan.md).
 
 ## ארכיטקטורת Multiplayer
 
@@ -153,15 +149,15 @@ NetworkClient → Proxy → View
 
 הלקוח אינו משנה את מצב המשחק בעצמו. הוא מציג snapshots מהשרת ושולח בקשות לפעולות. רק השרת מקדם את שעון המשחק ומכריע תנועה, הגעה, תפיסה, קפיצה, מנוחה וניקוד.
 
-במצב המקומי `main.py` מחבר את `DisplayManager` ישירות ל-`GameEngine`. במצב מרובה משתתפים `client.main` מחבר אותו ל-`RemoteGameEngineProxy`, ולכן אותה תצוגה יכולה לעבוד מול מנוע מקומי או מול שרת.
+`client.main` מחבר את `DisplayManager` ל-`RemoteGameEngineProxy`; התצוגה מציגה את המצב שמתקבל מהשרת ואינה מריצה מנוע משחק מקומי.
 
 ## לוגים
 
 בהרצת multiplayer נוצרים קובצי לוג מתחלפים:
 
-- `logs/server.log` — מחזור החיים של השרת, אימותים, חדרים וחיבורים.
-- `logs/clients/client_<username>.log` — פעילות של לקוחה מסוימת.
-- `logs/games/game_<game_id>.log` — חיבורים, פקודות, אירועי משחק וסיום של Match יחיד.
+- `server/logs/server.log` — מחזור החיים של השרת, אימותים, חדרים וחיבורים.
+- `client/logs/client_<username>.log` — פעילות של לקוחה מסוימת.
+- `server/logs/games/game_<game_id>.log` — חיבורים, פקודות, אירועי משחק וסיום של Match יחיד.
 
 כל קובץ מוגבל ל־1MB ונשמרים עד שלושה גיבויים. הודעות אימות גולמיות אינן נכתבות, וסיסמאות ו־session tokens עוברים redaction נוסף. קובצי הלוג והגיבויים אינם נכנסים ל־Git.
 
@@ -170,16 +166,16 @@ NetworkClient → Proxy → View
 הרצת כל בדיקות היחידה והאינטגרציה:
 
 ```powershell
-python -m pytest -q
+python -m pytest DOCS/tests -q
 ```
 
 הרצה עם דוח כיסוי:
 
 ```powershell
-./run_tests.ps1
+.\DOCS\run_tests.ps1
 ```
 
-בנקודת העדכון האחרונה עברו 563 בדיקות ב-100% כיסוי של הלוגיקה הנמדדת. הבדיקות כוללות חוקי משחק, serialization, הרשאות, WebSocket אמיתי, הרשמה וכניסה מול SQLite, חדרים, matchmaking, reconnect, צפייה ולוגים מתחלפים ללא מידע רגיש.
+בנקודת העדכון האחרונה עברו 562 בדיקות ב-100% כיסוי של הלוגיקה הנמדדת. הבדיקות כוללות חוקי משחק, serialization, הרשאות, WebSocket אמיתי, הרשמה וכניסה מול SQLite, חדרים, matchmaking, reconnect, צפייה ולוגים מתחלפים ללא מידע רגיש.
 
 ## מצב הפיתוח
 
@@ -190,4 +186,4 @@ python -m pytest -q
 - **שלב E — Matchmaking, ניתוקים ו-Reconnect:** הושלם.
 - **שלב F — חדרים, Lobby, צופות ולוגים:** הושלם ואושר.
 
-הסטטוס המפורט ותתי-השלבים נמצאים ב-[server_plan.md](server_plan.md).
+הסטטוס המפורט ותתי-השלבים נמצאים ב-[server_plan.md](DOCS/plans/server_plan.md).

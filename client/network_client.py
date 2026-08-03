@@ -1,6 +1,6 @@
 """Stable public facade for the client's WebSocket transport."""
 
-from boardio.board_factory import STANDARD_GAME_CONFIG
+from networking.models.standard_game_config import STANDARD_GAME_CONFIG
 from client.transport.connection_state import ConnectionState, ConnectionStatus
 from client.transport.errors import (
     AuthenticationRejectedError,

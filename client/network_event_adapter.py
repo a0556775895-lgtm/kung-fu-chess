@@ -1,11 +1,11 @@
 """Translate validated network event payloads into local domain events."""
 
-from bus.event_bus import EventBus
-from engine.events import Arrival, GameOver, GameStarted, JumpStarted, MotionStarted
-from model.piece import Piece, PieceColor, PieceState
-from model.position import Position
+from networking.event_bus import EventBus
+from networking.events import Arrival, GameOver, GameStarted, JumpStarted, MotionStarted
+from networking.models.piece import Piece, PieceColor, PieceState
+from networking.models.position import Position
 from networking.protocols.game import ProtocolError
-from realtime.real_time_arbiter import ArrivalEvent
+from networking.events import ArrivalEvent
 
 
 class NetworkEventAdapter:
@@ -27,7 +27,7 @@ class NetworkEventAdapter:
                 event.piece, event.source, event.destination, event.duration_ms
             )),
             self._bus.subscribe(JumpStarted, lambda event: observer.on_jump_started(
-                event.piece, event.position
+                event.piece, event.position, event.duration_ms
             )),
             self._bus.subscribe(Arrival, lambda event: observer.on_arrival(event.event)),
             self._bus.subscribe(GameOver, lambda _event: observer.on_game_over()),
@@ -58,9 +58,14 @@ class NetworkEventAdapter:
 
         if event_type == "JUMP":
             position = _position(payload.get("position"))
+            piece = _piece(payload.get("piece"), position)
+            duration_ms = payload.get("duration_ms")
+            if isinstance(duration_ms, bool) or not isinstance(duration_ms, int):
+                raise ProtocolError("INVALID_EVENT_DURATION")
             self._bus.publish(JumpStarted(
-                _piece(payload.get("piece"), position),
+                piece,
                 position,
+                duration_ms,
             ))
             return
 

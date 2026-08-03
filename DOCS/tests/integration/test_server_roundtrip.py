@@ -1,0 +1,131 @@
+"""End-to-end WebSocket test across the real server and two real clients."""
+
+import asyncio
+
+from websockets.asyncio.client import connect
+
+from networking.models.standard_game_config import STANDARD_GAME_CONFIG
+from networking.models.position import Position
+from networking.protocols.auth import (
+    RegisterRequest,
+    encode_register,
+    parse_auth_response,
+)
+from networking.protocols.game import (
+    JoinRequest,
+    decode_event,
+    decode_state,
+    encode_join,
+    parse_command_response,
+    parse_config_response,
+)
+from server.transport.game_server import GameServer
+
+
+PASSWORD = "correct horse battery"
+
+
+async def _send_join(websocket, request_id):
+    """Authenticate and place one real socket in the matchmaking queue."""
+    username = request_id.replace("join", "user")
+    await websocket.send(
+        encode_register(
+            RegisterRequest(f"register-{username}", username, PASSWORD)
+        )
+    )
+    auth_response = parse_auth_response(await websocket.recv())
+    await websocket.send(encode_join(
+        JoinRequest(
+            request_id,
+            auth_response.session_token,
+            STANDARD_GAME_CONFIG,
+        )
+    ))
+
+
+async def _receive_admission(websocket):
+    """Receive admission only after both real clients have entered the queue."""
+    config_response = parse_config_response(await websocket.recv())
+    initial_state = decode_state(await websocket.recv())
+    return config_response, initial_state
+
+
+async def _observe_completed_move(websocket, request_id=None):
+    """Wait for the move's arrival and final board, plus OK for its sender."""
+    arrival_seen = False
+    final_state = None
+    response = None
+    deadline = asyncio.get_running_loop().time() + 3.0
+
+    while not (
+        arrival_seen
+        and final_state is not None
+        and (request_id is None or response is not None)
+    ):
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise TimeoutError("move round-trip did not complete")
+        message = await asyncio.wait_for(websocket.recv(), timeout=remaining)
+
+        if message.startswith("EVENT "):
+            arrival_seen = arrival_seen or decode_event(message)["type"] == "ARRIVAL"
+        elif message.startswith("STATE "):
+            state = decode_state(message)
+            pawn_at_e3 = any(piece.cell == Position(5, 4) for piece in state.pieces)
+            if pawn_at_e3 and not state.active_motions:
+                final_state = state
+        elif request_id is not None and message.startswith(("OK ", "ERR ")):
+            candidate = parse_command_response(message)
+            if candidate.request_id == request_id:
+                response = candidate
+
+    return response, final_state
+
+
+def _board_signature(state):
+    """Compare shared game data while ignoring connection-specific metadata."""
+    return tuple(
+        sorted((piece.id, piece.cell.row, piece.cell.col, piece.state) for piece in state.pieces)
+    )
+
+
+def test_two_clients_share_one_authoritative_websocket_game(auth_service):
+    async def scenario():
+        server = GameServer(port=0, auth_service=auth_service)
+        await server.start()
+        try:
+            uri = f"ws://127.0.0.1:{server.bound_port}"
+            async with connect(uri) as white, connect(uri) as black:
+                await _send_join(white, "join-white")
+                await _send_join(black, "join-black")
+                (
+                    (white_config, white_initial),
+                    (black_config, black_initial),
+                ) = await asyncio.gather(
+                    _receive_admission(white),
+                    _receive_admission(black),
+                )
+                expected_names = {"w": "user-white", "b": "user-black"}
+
+                assert not white_config.was_overridden
+                assert not black_config.was_overridden
+                assert white_initial.assigned_color == "w"
+                assert black_initial.assigned_color == "b"
+                assert white_initial.player_names == expected_names
+                assert black_initial.player_names == expected_names
+                assert _board_signature(white_initial) == _board_signature(black_initial)
+
+                await white.send("MOVE move-white WPe2e3")
+                (white_response, white_final), (_, black_final) = await asyncio.gather(
+                    _observe_completed_move(white, "move-white"),
+                    _observe_completed_move(black),
+                )
+
+                assert white_response.accepted
+                assert white_final.game_id == black_final.game_id
+                assert white_final.game_id
+                assert _board_signature(white_final) == _board_signature(black_final)
+        finally:
+            await server.close()
+
+    asyncio.run(scenario())

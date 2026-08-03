@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import re
 
-from model.game_config import GameConfig
+from networking.models.game_config import GameConfig
 from server.game.match import Match
 
 

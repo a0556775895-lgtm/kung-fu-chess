@@ -4,7 +4,7 @@ import sqlite3
 import unicodedata
 
 from server.dal.database import DEFAULT_RATING
-from server.dto import GameDTO, UserDTO
+from server.dal.dto import GameDTO, UserDTO
 
 
 class DuplicateUsernameError(ValueError):

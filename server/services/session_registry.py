@@ -5,7 +5,7 @@ from enum import Enum
 import secrets
 import unicodedata
 
-from model.piece import PieceColor
+from networking.models.piece import PieceColor
 
 
 class SessionState(str, Enum):

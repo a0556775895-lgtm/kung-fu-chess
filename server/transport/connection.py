@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from model.piece import PieceColor
+from networking.models.piece import PieceColor
 
 
 class ConnectionRole(str, Enum):

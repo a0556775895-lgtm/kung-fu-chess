@@ -1,6 +1,6 @@
 """Convert one Match's domain events into non-blocking outbound messages."""
 
-from engine.events import Arrival, GameStarted, JumpStarted, MotionStarted
+from networking.events import Arrival, GameStarted, JumpStarted, MotionStarted
 from networking.protocols.game import encode_event
 
 
@@ -68,6 +68,7 @@ class ServerBroadcaster:
         payload.update({
             "piece": _piece_payload(event.piece),
             "position": _position_payload(event.position),
+            "duration_ms": event.duration_ms,
         })
         self._publish(payload)
 

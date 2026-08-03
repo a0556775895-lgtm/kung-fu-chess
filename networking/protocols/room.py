@@ -4,12 +4,12 @@ from dataclasses import dataclass, field
 import re
 from typing import TypeAlias
 
-from model.game_config import GameConfig
+from networking.models.game_config import GameConfig
 from networking.protocols._validation import (
     is_valid_request_id,
     is_valid_session_token,
 )
-from networking.serializers.game_config import (
+from networking.serializers.game_config_serializer import (
     GameConfigSerializationError,
     GameConfigSerializer,
 )

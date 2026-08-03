@@ -3,9 +3,9 @@
 from dataclasses import dataclass
 import uuid
 
-from boardio.board_factory import create_board, is_supported_game_config
-from engine.game_engine import GameEngine
-from model.piece import PieceColor
+from server.boardio.board_factory import create_board, is_supported_game_config
+from server.engine.game_engine import GameEngine
+from networking.models.piece import PieceColor
 from networking.protocols.game import (
     JoinRequest,
     encode_config_accepted,

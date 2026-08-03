@@ -4,7 +4,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from app_logging import (
+from networking.logging_utils import (
     close_managed_handlers,
     configure_rotating_logger,
     safe_filename_component,

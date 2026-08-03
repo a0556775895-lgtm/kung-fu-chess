@@ -5,18 +5,18 @@ import json
 import re
 from typing import Any
 
-from engine.snapshot import GameSnapshot
-from model.game_config import GameConfig
-from model.position import Position
+from networking.models.snapshot import GameSnapshot
+from networking.models.game_config import GameConfig
+from networking.models.position import Position
 from networking.protocols._validation import (
     is_valid_request_id,
     is_valid_session_token,
 )
-from networking.serializers.game_config import (
+from networking.serializers.game_config_serializer import (
     GameConfigSerializationError,
     GameConfigSerializer,
 )
-from networking.serializers.snapshot import GameSnapshotSerializer
+from networking.serializers.snapshot_serializer import GameSnapshotSerializer
 
 
 _MOVE_RE = re.compile(r"^(?P<color>[WB])(?P<kind>[PNBRQK])(?P<src>[a-h][1-8])(?P<dst>[a-h][1-8])$")

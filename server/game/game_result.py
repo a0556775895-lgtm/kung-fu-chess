@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from model.piece import PieceColor
+from networking.models.piece import PieceColor
 
 
 class FinishReason(str, Enum):

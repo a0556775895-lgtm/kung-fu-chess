@@ -3,7 +3,7 @@
 from dataclasses import replace
 import uuid
 
-from model.piece import PieceColor
+from networking.models.piece import PieceColor
 from networking.protocols.game import encode_state
 from server.game.game_result import FinishReason, GameResult
 from server.transport.broadcaster import ServerBroadcaster

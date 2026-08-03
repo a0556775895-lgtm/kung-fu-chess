@@ -1,7 +1,7 @@
 """Coordinate graphical lobby actions with the public NetworkClient facade."""
 
 from client.network_client import ConnectionState
-from view.lobby.lobby_state import (
+from client.view.lobby.lobby_state import (
     LobbyAction,
     LobbyScreen,
     LobbyViewState,

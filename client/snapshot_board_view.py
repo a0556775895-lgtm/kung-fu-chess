@@ -1,7 +1,7 @@
 """Read-only board lookup backed by the latest authoritative snapshot."""
 
-from engine.snapshot import GameSnapshot, PieceSnapshot
-from model.position import Position
+from networking.models.snapshot import GameSnapshot, PieceSnapshot
+from networking.models.position import Position
 
 
 class SnapshotBoardView:

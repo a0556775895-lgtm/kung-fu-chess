@@ -5,8 +5,8 @@ import math
 import time
 import uuid
 
-from engine.snapshot import GameSnapshot
-from model.position import Position
+from networking.models.snapshot import GameSnapshot
+from networking.models.position import Position
 from networking.protocols.game import (
     JumpCommand,
     MoveCommand,
